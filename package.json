@@ -11,6 +11,7 @@
     "dev:vite": "vite",
     "dev:electron": "wait-on tcp:5173 && tsc -p tsconfig.electron.json && cross-env NODE_ENV=development electron .",
     "icons": "node scripts/generate-icons.mjs",
+    "clean": "node -e \"const fs=require('fs');['dist','dist-electron','release','build'].forEach(d=>fs.rmSync(d,{recursive:true,force:true}));['tsconfig.tsbuildinfo','tsconfig.node.tsbuildinfo','vite.config.js','vite.config.d.ts'].forEach(f=>fs.rmSync(f,{force:true}))\"",
     "build:vite": "tsc -b && vite build",
     "build:electron": "tsc -p tsconfig.electron.json",
     "build": "npm run build:vite && npm run build:electron",
@@ -50,6 +51,7 @@
       "dist/**/*",
       "dist-electron/**/*"
     ],
+    "npmRebuild": false,
     "asarUnpack": [
       "node_modules/uiohook-napi/**"
     ],

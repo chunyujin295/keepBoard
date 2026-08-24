@@ -15,24 +15,28 @@ if errorlevel 1 (
 )
 
 if not exist node_modules (
-    echo [1/3] Installing dependencies...
+    echo [1/4] Installing dependencies...
     call npm install
     if errorlevel 1 exit /b 1
 ) else (
-    echo [1/3] Dependencies OK.
+    echo [1/4] Dependencies OK.
 )
 
-echo [2/3] Generating pixel icons + building...
+echo [2/4] Cleaning ALL previous build outputs (dist / dist-electron / release / icons)...
+call npm run clean
+if errorlevel 1 exit /b 1
+
+echo [3/4] Regenerating pixel icons + full build...
 call npm run prepackage
 if errorlevel 1 exit /b 1
 
-echo [3/3] Packaging with electron-builder ...
+echo [4/4] Packaging with electron-builder ...
 call npm run package
 if errorlevel 1 exit /b 1
 
 echo.
 echo ============================================
-echo   Done! Output files:
+echo   Done! Fresh output files:
 echo --------------------------------------------
 for %%f in (release\*.exe) do echo   %%f
 echo ============================================

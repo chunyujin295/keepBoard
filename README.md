@@ -54,7 +54,7 @@ npm run dev        # 启动开发模式
 scripts\build-installer.cmd
 ```
 
-自动完成：生成像素图标 → 构建渲染层与主进程 → electron-builder 打包。
+自动完成：**清理全部旧构建产物**（dist / dist-electron / release / 图标缓存，确保每次都是最新）→ 重新生成像素图标 → 构建渲染层与主进程 → electron-builder 打包。
 
 ### 方式二：手动命令
 
