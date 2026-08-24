@@ -9,7 +9,7 @@ import { AppStore } from './store'
 import { GlobalHooker, classifyKey } from './hooks'
 import { buildTrayMenu, applyAutoStart, THEME_LIST } from './menu'
 import { DailyStats, Settings, ThemeId, WeeklyStats } from './types'
-import { todayKey, formatDuration, weeklyToCsv } from './statsUtils'
+import { todayKey, weeklyToCsv } from './statsUtils'
 
 let mainWindow: BrowserWindow | null = null
 let winMgr: WindowManager | null = null
@@ -279,7 +279,6 @@ function registerIpc() {
     if (!store) return
     if (p === 'userData') shell.openPath(app.getPath('userData'))
   })
-  ipcMain.handle('app:format-duration', (_e, ms: number) => formatDuration(ms))
   ipcMain.on('app:quit', () => app.quit())
 }
 

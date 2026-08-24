@@ -32,7 +32,6 @@ export default function App() {
   const [weekly, setWeekly] = useState<WeeklyStats | null>(null)
   const [panel, setPanel] = useState<PanelId>(null)
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number } | null>(null)
-  const [durationFn, setDurationFn] = useState<(ms: number) => string>(formatDurationLocal)
 
   useEffect(() => {
     let offs: Array<() => void> = []
@@ -40,9 +39,6 @@ export default function App() {
     window.keepboard?.listThemes?.().then((t: ThemeList | undefined) => { if (t && t.length) setThemes(t) }).catch(() => { })
     window.keepboard?.getDaily?.().then((d: DailyStats) => setDaily(d)).catch(() => { })
     window.keepboard?.getWeekly?.().then((w: WeeklyStats) => setWeekly(w)).catch(() => { })
-    window.keepboard?.formatDuration?.(0).then(() => {
-      setDurationFn((ms: number) => window.keepboard?.formatDuration?.(ms) ?? formatDurationLocal(ms))
-    }).catch(() => { })
     offs.push(window.keepboard?.onSettings?.((s: Settings) => setSettings(s)) ?? (() => { }))
     offs.push(window.keepboard?.onDaily?.((d: DailyStats) => setDaily(d)) ?? (() => { }))
     offs.push(window.keepboard?.onOpenPanel?.((id: PanelId) => { setPanel(id); setCtxMenu(null) }) ?? (() => { }))
@@ -71,12 +67,12 @@ export default function App() {
 
       {panel === 'daily' && (
         <div className="panel-mask" onClick={(e) => { e.stopPropagation(); setPanel(null) }}>
-          <DailyPanel daily={daily} formatDuration={durationFn} onClose={() => setPanel(null)} />
+          <DailyPanel daily={daily} formatDuration={formatDurationLocal} onClose={() => setPanel(null)} />
         </div>
       )}
       {panel === 'weekly' && (
         <div className="panel-mask" onClick={(e) => { e.stopPropagation(); setPanel(null) }}>
-          <WeeklyPanel weekly={weekly} formatDuration={durationFn} onClose={() => setPanel(null)} />
+          <WeeklyPanel weekly={weekly} formatDuration={formatDurationLocal} onClose={() => setPanel(null)} />
         </div>
       )}
       {panel === 'settings' && (

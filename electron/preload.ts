@@ -47,8 +47,7 @@ const api = {
   reportWebKey: (code: string) => ipcRenderer.send('stats:key-via-web', code),
   reportWebClick: (btn: number) => ipcRenderer.send('stats:click-via-web', btn),
 
-  openUserData: () => ipcRenderer.invoke('app:open-path', 'userData'),
-  formatDuration: (ms: number): Promise<string> => ipcRenderer.invoke('app:format-duration', ms)
+  openUserData: () => ipcRenderer.invoke('app:open-path', 'userData')
 }
 
 contextBridge.exposeInMainWorld('keepboard', api)
