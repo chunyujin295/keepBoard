@@ -13,6 +13,8 @@ export class AppStore {
   private dir: string
   private file: string
   private data: StoreShape
+  private dirty = false
+  private flushTimer: NodeJS.Timeout | null = null
 
   constructor() {
     this.dir = app.getPath('userData')
@@ -67,9 +69,25 @@ export class AppStore {
     const d = this.getDaily(dateKey)
     fn(d)
     this.data.daily[dateKey] = d
-    // Flush occasionally by size; keep save simple here and always persist
-    this.save()
+    this.scheduleSave()
     return d
+  }
+
+  // Keystrokes can arrive at very high frequency; debounce full-file writes.
+  private scheduleSave() {
+    this.dirty = true
+    if (!this.flushTimer) {
+      this.flushTimer = setTimeout(() => this.flush(), 2_000)
+      this.flushTimer.unref?.()
+    }
+  }
+
+  flush() {
+    if (this.flushTimer) { clearTimeout(this.flushTimer); this.flushTimer = null }
+    if (this.dirty) {
+      this.dirty = false
+      this.save()
+    }
   }
 
   // ---------- Weekly stats ----------

@@ -61,6 +61,9 @@ export function normalizeKeyCode(code: number): string {
 export class GlobalHooker extends EventEmitter {
   private running = false
   private nativeModule: any = null
+  /** Raw events received from the native hook — surfaced in the UI so users
+   *  can verify global capture is actually working in their environment. */
+  nativeEventCount = 0
 
   get nativeActive(): boolean {
     return !!this.nativeModule
@@ -73,7 +76,7 @@ export class GlobalHooker extends EventEmitter {
       const m = require('uiohook-napi')
       const hook = m?.uIOhook
       if (hook && typeof hook.start === 'function') {
-        hook.on('keydown', (e: any) => this.emitEvent({
+        hook.on('keydown', (e: any) => this.emitNative({
           type: 'keypress',
           subtype: normalizeKeyCode(e?.keycode ?? 0),
           ts: Date.now()
@@ -83,9 +86,9 @@ export class GlobalHooker extends EventEmitter {
           const map: Record<number, InputEventType> = {
             1: 'mousedown-left', 2: 'mousedown-middle', 3: 'mousedown-right'
           }
-          this.emitEvent({ type: map[e?.button] ?? 'mousedown-left', ts: Date.now() })
+          this.emitNative({ type: map[e?.button] ?? 'mousedown-left', ts: Date.now() })
         })
-        hook.on('wheel', () => this.emitEvent({ type: 'wheel', ts: Date.now() }))
+        hook.on('wheel', () => this.emitNative({ type: 'wheel', ts: Date.now() }))
         hook.start()
         this.nativeModule = m
         return
@@ -105,6 +108,11 @@ export class GlobalHooker extends EventEmitter {
   }
 
   emitEvent(e: HookEvent) { this.emit('event', e) }
+
+  private emitNative(e: HookEvent) {
+    this.nativeEventCount++
+    this.emit('event', e)
+  }
 
   /**
    * Fallback mode: renderer forwards keydown/mousedown that occur while the

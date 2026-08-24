@@ -253,7 +253,8 @@ function registerIpc() {
     return store?.getWeekly(ref)
   })
   ipcMain.handle('stats:recent-weeks', (_e, n = 4): WeeklyStats[] => store?.getLastNWeeks(n) ?? [])
-  ipcMain.handle('hooks:status', () => ({ native: hooker?.nativeActive ?? false }))
+  ipcMain.handle('hooks:status', () => ({ native: hooker?.nativeActive ?? false, events: hooker?.nativeEventCount ?? 0 }))
+  ipcMain.handle('app:version', () => app.getVersion())
   ipcMain.handle('stats:export-week-csv', async (_e, offset = 0): Promise<string | null> => {
     if (!store || !mainWindow) return null
     const ref = new Date()
@@ -283,7 +284,22 @@ function registerIpc() {
   ipcMain.on('app:quit', () => app.quit())
 }
 
-app.whenReady().then(() => {
+// Single instance: two copies would BOTH install global hooks AND overwrite
+// each other's stats file (each holds its own in-memory snapshot), silently
+// wiping recorded counts every few seconds.
+if (!app.requestSingleInstanceLock()) {
+  app.quit()
+} else {
+  app.on('second-instance', () => {
+    if (!mainWindow) createWindow()
+    else mainWindow.show()
+  })
+  void startApp()
+}
+
+async function startApp() {
+  await app.whenReady()
+
   store = new AppStore()
   store.pruneOld(180)
   const s = store.getSettings()
@@ -327,7 +343,7 @@ app.whenReady().then(() => {
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
   })
-})
+}
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit()
@@ -335,4 +351,5 @@ app.on('window-all-closed', () => {
 
 app.on('before-quit', () => {
   hooker?.stop()
+  try { store?.flush() } catch { /* ignore */ }
 })

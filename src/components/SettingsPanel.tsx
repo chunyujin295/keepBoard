@@ -15,12 +15,20 @@ const THEME_PREV: Record<ThemeId, string> = {
 
 export default function SettingsPanel({ settings, themes, onClose, onChange }: Props) {
   const [local, setLocal] = useState<Settings | null>(settings)
-  const [hookNative, setHookNative] = useState<boolean | null>(null)
+  const [hook, setHook] = useState<{ native: boolean; events: number } | null>(null)
+  const [version, setVersion] = useState('')
   useEffect(() => setLocal(settings), [settings])
   useEffect(() => {
-    window.keepboard?.getHookStatus?.().then((s: { native: boolean } | undefined) => {
-      if (s) setHookNative(!!s.native)
-    }).catch(() => { })
+    let alive = true
+    const poll = () => {
+      window.keepboard?.getHookStatus?.().then((s: { native: boolean; events: number } | undefined) => {
+        if (alive && s) setHook(s)
+      }).catch(() => { })
+    }
+    poll()
+    const t = setInterval(poll, 1200)
+    window.keepboard?.getAppVersion?.().then((v: string) => { if (alive && v) setVersion(v) }).catch(() => { })
+    return () => { alive = false; clearInterval(t) }
   }, [])
 
   if (!local) return null
@@ -63,9 +71,16 @@ export default function SettingsPanel({ settings, themes, onClose, onChange }: P
         <div className="panel-row">
           <span className="panel-k">📡 全局监听</span>
           <span className="panel-v">
-            {hookNative === null ? '...' : hookNative ? '✅ 全局生效' : <span title="原生钩子未加载，可能被安全软件拦截；当前仅统计本窗口内的输入">⚠️ 仅本窗口</span>}
+            {hook === null
+              ? '...'
+              : hook.native
+                ? `✅ 全局生效 · 已捕获 ${hook.events} 事件`
+                : '⚠️ 仅本窗口'}
           </span>
         </div>
+        {hook !== null && !hook.native && (
+          <div className="hint">原生钩子未加载（可能被安全软件拦截），当前仅统计本窗口内的输入</div>
+        )}
 
         <div className="panel-row">
           <span className="panel-k">🔊 音量</span>
@@ -84,6 +99,7 @@ export default function SettingsPanel({ settings, themes, onClose, onChange }: P
         <button className="pixel-btn small" onClick={() => window.keepboard?.openUserData?.()}>📂 数据目录</button>
         <button className="pixel-btn small" onClick={onClose}>关闭</button>
       </div>
+      {version && <div className="panel-meta" style={{ marginTop: 6, textAlign: 'center' }}>keepBoard v{version}</div>}
     </div>
   )
 }
