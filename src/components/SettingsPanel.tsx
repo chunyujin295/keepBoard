@@ -15,7 +15,13 @@ const THEME_PREV: Record<ThemeId, string> = {
 
 export default function SettingsPanel({ settings, themes, onClose, onChange }: Props) {
   const [local, setLocal] = useState<Settings | null>(settings)
+  const [hookNative, setHookNative] = useState<boolean | null>(null)
   useEffect(() => setLocal(settings), [settings])
+  useEffect(() => {
+    window.keepboard?.getHookStatus?.().then((s: { native: boolean } | undefined) => {
+      if (s) setHookNative(!!s.native)
+    }).catch(() => { })
+  }, [])
 
   if (!local) return null
   const s = local
@@ -53,6 +59,13 @@ export default function SettingsPanel({ settings, themes, onClose, onChange }: P
         <Toggle label="🧲 自动吸附任务栏" value={s.autoDock} onChange={(v) => set({ autoDock: v })} />
         <Toggle label="🔝 始终置顶" value={s.alwaysOnTop} onChange={(v) => set({ alwaysOnTop: v })} />
         <Toggle label="🔊 音效反馈" value={s.audioEnabled} onChange={(v) => set({ audioEnabled: v })} />
+
+        <div className="panel-row">
+          <span className="panel-k">📡 全局监听</span>
+          <span className="panel-v">
+            {hookNative === null ? '...' : hookNative ? '✅ 全局生效' : <span title="原生钩子未加载，可能被安全软件拦截；当前仅统计本窗口内的输入">⚠️ 仅本窗口</span>}
+          </span>
+        </div>
 
         <div className="panel-row">
           <span className="panel-k">🔊 音量</span>

@@ -1,7 +1,7 @@
 {
   "name": "keepboard",
   "productName": "keepBoard",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "A pixel-art piranha desktop pet that tracks keystrokes, clicks and screen time.",
   "main": "dist-electron/main.js",
   "author": "keepBoard",

@@ -22,6 +22,7 @@ const api = {
   },
 
   listThemes: (): Promise<ThemeList> => ipcRenderer.invoke('themes:list'),
+  getHookStatus: (): Promise<{ native: boolean }> => ipcRenderer.invoke('hooks:status'),
 
   getDaily: (): Promise<DailyStats> => ipcRenderer.invoke('stats:daily'),
   getWeekly: (): Promise<WeeklyStats> => ipcRenderer.invoke('stats:weekly'),

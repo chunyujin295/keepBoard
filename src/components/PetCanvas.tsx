@@ -54,12 +54,17 @@ export default function PetCanvas({ theme }: Props) {
     lastKeyTsRef.current = now
   }
 
+  const triggerBlink = () => {
+    const now = performance.now()
+    if (now >= blinkUntilRef.current - 50) blinkUntilRef.current = now + 220
+  }
+
   // Manual window dragging via IPC. CSS `-webkit-app-region: drag` is NOT used:
   // drag regions are non-client areas on Windows and swallow right-clicks
   // (the OS shows the system menu instead of our context menu).
   const startDrag = (e: React.MouseEvent) => {
     if (e.button !== 0 || dragRef.current) return
-    triggerBite(0.7)
+    triggerBlink()
     window.keepboard?.reportWebClick?.(0)
     const sx = e.screenX
     const sy = e.screenY

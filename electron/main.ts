@@ -253,6 +253,7 @@ function registerIpc() {
     return store?.getWeekly(ref)
   })
   ipcMain.handle('stats:recent-weeks', (_e, n = 4): WeeklyStats[] => store?.getLastNWeeks(n) ?? [])
+  ipcMain.handle('hooks:status', () => ({ native: hooker?.nativeActive ?? false }))
   ipcMain.handle('stats:export-week-csv', async (_e, offset = 0): Promise<string | null> => {
     if (!store || !mainWindow) return null
     const ref = new Date()
@@ -288,9 +289,25 @@ app.whenReady().then(() => {
   const s = store.getSettings()
   applyAutoStart(s.autoStart)
 
+  registerIpc()
+  createWindow()
+  createTray()
+
   hooker = new GlobalHooker()
   hooker.on('event', onInputEvent)
   hooker.start()
+
+  // Make degraded mode visible to the user (stderr is invisible in a
+  // windowed packaged app, so surface it via tray balloon).
+  if (!hooker.nativeActive) {
+    try {
+      tray?.displayBalloon({
+        iconType: 'warning',
+        title: 'keepBoard 全局监听未启用',
+        content: '已降级为仅统计本窗口内的输入。可能被安全软件拦截，请检查后重启应用。'
+      })
+    } catch { /* ignore */ }
+  }
 
   // Periodic screen-time flusher (for when user idle-sessions end quietly)
   setInterval(() => {
@@ -306,10 +323,6 @@ app.whenReady().then(() => {
     store.mutateDaily(d, (x) => { x.screenTimeMs = sessionAccumulatedMs })
     maybePushStats()
   }, 5_000).unref?.()
-
-  registerIpc()
-  createWindow()
-  createTray()
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
