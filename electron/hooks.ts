@@ -1,5 +1,5 @@
 import EventEmitter from 'node:events'
-import { BrowserWindow, globalShortcut, ipcMain } from 'electron'
+import { ipcMain } from 'electron'
 import { InputEventType } from './types'
 import { classifyKey } from './statsUtils'
 
@@ -9,81 +9,109 @@ export interface HookEvent {
   ts: number
 }
 
+// Reverse map: uiohook keycode -> constant name (e.g. 30 -> "A", 28 -> "ENTER")
+let keyCodeRev: Map<number, string> | null = null
+function reverseKeyMap(): Map<number, string> {
+  if (keyCodeRev) return keyCodeRev
+  keyCodeRev = new Map()
+  try {
+    const { UiohookKey } = require('uiohook-napi')
+    for (const [name, code] of Object.entries(UiohookKey)) {
+      if (typeof code === 'number') keyCodeRev.set(code, name)
+    }
+  } catch { /* ignore */ }
+  return keyCodeRev
+}
+
 /**
- * Lightweight global input hooker.
- * Priority: Node addon (uiohook-napi) if installed & loadable.
- * Falls back to Electron globalShortcut (only catches registered hotkeys) +
- * WebContents 'input-event' for keyboard events routed to the window.
- * For accurate global tracking users should install the optional native addon:
- *   npm i uiohook-napi
+ * Translate a raw uiohook keycode into a classifier-friendly key name.
+ * Produces Electron-style codes: KeyA, Digit5, F12, Control, ArrowLeft, Enter...
+ */
+export function normalizeKeyCode(code: number): string {
+  const name = reverseKeyMap().get(code)
+  if (!name) return String(code ?? '')
+  if (/^[A-Z]$/.test(name)) return 'Key' + name
+  if (/^[0-9]$/.test(name)) return 'Digit' + name
+  if (/^NUMPAD[0-9]$/.test(name)) return 'Numpad' + name.slice(6)
+  if (/^F[0-9]+$/.test(name)) return name
+  if (/CTRL|CONTROL/.test(name)) return 'Control'
+  if (/SHIFT/.test(name)) return 'Shift'
+  if (/^ALT/.test(name)) return 'Alt'
+  if (/META|CMD|WIN/.test(name)) return 'Meta'
+  switch (name) {
+    case 'UP': return 'ArrowUp'
+    case 'DOWN': return 'ArrowDown'
+    case 'LEFT': return 'ArrowLeft'
+    case 'RIGHT': return 'ArrowRight'
+    case 'ENTER': return 'Enter'
+    case 'SPACE': return 'Space'
+    case 'BACKSPACE': return 'Backspace'
+    case 'TAB': return 'Tab'
+    default: return name
+  }
+}
+
+/**
+ * Global input hooker.
+ * Uses the bundled N-API native module `uiohook-napi` (prebuilt binaries,
+ * no node-gyp required). If it cannot be loaded, falls back to counting
+ * only input that happens inside keepBoard's own window — it NEVER
+ * registers global shortcuts or intercepts system-wide keystrokes.
  */
 export class GlobalHooker extends EventEmitter {
   private running = false
   private nativeModule: any = null
-  private pollingTimer: NodeJS.Timeout | null = null
-  private lastWindowsHookState: Record<string, boolean> = {}
+
+  get nativeActive(): boolean {
+    return !!this.nativeModule
+  }
 
   start() {
     if (this.running) return
     this.running = true
-    // Attempt native addon
     try {
-      // eslint-disable-next-line @typescript-eslint/no-var-requires
       const m = require('uiohook-napi')
-      if (m && m.UioHook) {
-        m.UioHook.start()
-        m.UioHook.on('keydown', (e: any) => this.emitEvent({
+      const hook = m?.uIOhook
+      if (hook && typeof hook.start === 'function') {
+        hook.on('keydown', (e: any) => this.emitEvent({
           type: 'keypress',
-          subtype: String(e.keycode ?? ''),
+          subtype: normalizeKeyCode(e?.keycode ?? 0),
           ts: Date.now()
         }))
-        m.UioHook.on('mousedown', (e: any) => {
+        hook.on('mousedown', (e: any) => {
+          // libuiohook buttons: 1=left, 2=middle, 3=right
           const map: Record<number, InputEventType> = {
             1: 'mousedown-left', 2: 'mousedown-middle', 3: 'mousedown-right'
           }
-          const t = map[e.button] || 'mousedown-left'
-          this.emitEvent({ type: t, ts: Date.now() })
+          this.emitEvent({ type: map[e?.button] ?? 'mousedown-left', ts: Date.now() })
         })
-        m.UioHook.on('wheel', (_e: any) => this.emitEvent({
-          type: 'wheel', ts: Date.now()
-        }))
+        hook.on('wheel', () => this.emitEvent({ type: 'wheel', ts: Date.now() }))
+        hook.start()
         this.nativeModule = m
         return
       }
-    } catch { /* ignore */ }
+    } catch { /* fall through */ }
 
-    // Fallback: poll keyboard state via Electron (best-effort) + window listeners
-    this.startBestEffort()
+    console.warn('[keepBoard] uiohook-napi unavailable, stats limited to in-app input.')
+    this.registerInAppForwarding()
   }
 
   stop() {
     this.running = false
-    if (this.nativeModule?.UioHook) {
-      try { this.nativeModule.UioHook.stop() } catch { /* ignore */ }
+    if (this.nativeModule?.uIOhook) {
+      try { this.nativeModule.uIOhook.stop() } catch { /* ignore */ }
     }
     this.nativeModule = null
-    if (this.pollingTimer) { clearInterval(this.pollingTimer); this.pollingTimer = null }
   }
 
   emitEvent(e: HookEvent) { this.emit('event', e) }
 
-  private startBestEffort() {
-    // Register a sample of common keys as global shortcuts so that even without
-    // the native addon we can approximate typing in the global scope.
-    const letters = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('')
-    const digits = '0123456789'.split('')
-    const extras = ['Space', 'Enter', 'Backspace', 'Tab', 'Escape', 'ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown']
-    const candidates = [...letters.map((l) => `CommandOrControl+${l}`), ...letters, ...digits, ...extras]
-    candidates.forEach((accel) => {
-      try {
-        const ok = globalShortcut.register(accel, () => {
-          const subtype = accel.includes('+') ? accel.split('+').slice(-1)[0] : accel
-          this.emitEvent({ type: 'keypress', subtype, ts: Date.now() })
-        })
-        if (ok) this.lastWindowsHookState[accel] = true
-      } catch { /* ignore */ }
-    })
-    // Also listen for uncaught key events through focused webcontents
+  /**
+   * Fallback mode: renderer forwards keydown/mousedown that occur while the
+   * pet window is focused. Registered ONLY in fallback mode so that events
+   * are never double-counted when the native hook is active.
+   */
+  private registerInAppForwarding() {
     ipcMain.on('stats:key-via-web', (_e, code: string) => {
       this.emitEvent({ type: 'keypress', subtype: code, ts: Date.now() })
     })

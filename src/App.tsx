@@ -32,7 +32,6 @@ export default function App() {
   const [weekly, setWeekly] = useState<WeeklyStats | null>(null)
   const [panel, setPanel] = useState<PanelId>(null)
   const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number } | null>(null)
-  const [showHint, setShowHint] = useState(() => !localStorage.getItem('kb-hint-done'))
   const [durationFn, setDurationFn] = useState<(ms: number) => string>(formatDurationLocal)
 
   useEffect(() => {
@@ -60,8 +59,6 @@ export default function App() {
 
   const openMenu = (e: React.MouseEvent) => {
     e.preventDefault()
-    localStorage.setItem('kb-hint-done', '1')
-    setShowHint(false)
     setPanel(null)
     setCtxMenu({ x: e.clientX, y: e.clientY })
   }
@@ -71,7 +68,6 @@ export default function App() {
   return (
     <div className="app-root" onContextMenu={openMenu}>
       <PetCanvas theme={theme} />
-      {showHint && <div className="hint-tip">右键我 →</div>}
 
       {panel === 'daily' && (
         <div className="panel-mask" onClick={(e) => { e.stopPropagation(); setPanel(null) }}>

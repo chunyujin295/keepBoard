@@ -20,11 +20,17 @@ const DRAWERS: Record<ThemeId, (ctx: CanvasRenderingContext2D, f: PetFrame) => v
 
 interface Props {
   theme: ThemeId
-  onBite?: () => void
-  onRightClick?: () => void
 }
 
-export default function PetCanvas({ theme, onBite, onRightClick }: Props) {
+interface DragState {
+  startX: number
+  startY: number
+  winX: number
+  winY: number
+  lastSent: number
+}
+
+export default function PetCanvas({ theme }: Props) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const rafRef = useRef<number>(0)
   const startTime = useRef<number>(performance.now())
@@ -35,6 +41,7 @@ export default function PetCanvas({ theme, onBite, onRightClick }: Props) {
   const nextBlinkRef = useRef<number>(performance.now() + 4000)
   const lastKeyTsRef = useRef<number>(0)
   const comboCountRef = useRef<number>(0)
+  const dragRef = useRef<DragState | null>(null)
 
   const triggerBite = (intensity = 1) => {
     const now = performance.now()
@@ -45,8 +52,39 @@ export default function PetCanvas({ theme, onBite, onRightClick }: Props) {
       if (comboCountRef.current > 5) frenzyUntilRef.current = now + 900
     } else comboCountRef.current = 1
     lastKeyTsRef.current = now
-    onBite?.()
+  }
+
+  // Manual window dragging via IPC. CSS `-webkit-app-region: drag` is NOT used:
+  // drag regions are non-client areas on Windows and swallow right-clicks
+  // (the OS shows the system menu instead of our context menu).
+  const startDrag = (e: React.MouseEvent) => {
+    if (e.button !== 0 || dragRef.current) return
+    triggerBite(0.7)
     window.keepboard?.reportWebClick?.(0)
+    const sx = e.screenX
+    const sy = e.screenY
+    window.keepboard?.getWindowPos?.().then((b: { x: number; y: number } | null) => {
+      if (!b) return
+      dragRef.current = { startX: sx, startY: sy, winX: b.x, winY: b.y, lastSent: 0 }
+      const onMove = (ev: MouseEvent) => {
+        const st = dragRef.current
+        if (!st) return
+        const now = performance.now()
+        if (now - st.lastSent < 16) return
+        st.lastSent = now
+        window.keepboard?.dragWindowTo?.(
+          Math.round(st.winX + ev.screenX - st.startX),
+          Math.round(st.winY + ev.screenY - st.startY)
+        )
+      }
+      const onUp = () => {
+        dragRef.current = null
+        window.removeEventListener('mousemove', onMove)
+        window.removeEventListener('mouseup', onUp)
+      }
+      window.addEventListener('mousemove', onMove)
+      window.addEventListener('mouseup', onUp)
+    }).catch(() => { })
   }
 
   useEffect(() => {
@@ -96,16 +134,12 @@ export default function PetCanvas({ theme, onBite, onRightClick }: Props) {
   }, [theme])
 
   useEffect(() => {
-    const kd = () => { triggerBite(Math.random() * 0.4 + 0.8); window.keepboard?.reportWebKey?.('AnyKey') }
-    const md = (e: MouseEvent) => {
-      if (e.button === 0) triggerBite(0.7)
+    const kd = (e: KeyboardEvent) => {
+      triggerBite(Math.random() * 0.4 + 0.8)
+      window.keepboard?.reportWebKey?.(e.code || 'AnyKey')
     }
     window.addEventListener('keydown', kd)
-    window.addEventListener('mousedown', md)
-    return () => {
-      window.removeEventListener('keydown', kd)
-      window.removeEventListener('mousedown', md)
-    }
+    return () => window.removeEventListener('keydown', kd)
   }, [])
 
   const style: React.CSSProperties = {
@@ -115,17 +149,15 @@ export default function PetCanvas({ theme, onBite, onRightClick }: Props) {
     display: 'block',
     cursor: 'grab',
     userSelect: 'none',
-    touchAction: 'none',
-    WebkitAppRegion: 'drag',
-    appRegion: 'drag'
-  } as React.CSSProperties
+    touchAction: 'none'
+  }
 
   return (
     <canvas
       ref={canvasRef}
       style={style}
       title="左键拖动 · 右键打开菜单"
-      onContextMenu={(e) => { e.preventDefault(); onRightClick?.() }}
+      onMouseDown={startDrag}
       aria-label="keepBoard 像素宠物"
     />
   )

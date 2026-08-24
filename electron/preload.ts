@@ -6,6 +6,9 @@ export type ThemeList = { id: ThemeId; label: string }[]
 const api = {
   getTaskbar: () => ipcRenderer.invoke('win:get-taskbar'),
   reDock: () => ipcRenderer.invoke('win:re-dock'),
+  getWindowPos: (): Promise<{ x: number; y: number; width: number; height: number } | null> =>
+    ipcRenderer.invoke('win:get-pos'),
+  dragWindowTo: (x: number, y: number): void => ipcRenderer.send('win:drag-to', x, y),
   setIgnoreMouseEvents: (ignore: boolean, options?: { forward: boolean }) =>
     ipcRenderer.send('win:set-ignore-mouse-events', ignore, options),
   quitApp: () => ipcRenderer.send('app:quit'),

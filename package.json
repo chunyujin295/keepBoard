@@ -18,7 +18,9 @@
     "prepackage": "npm run icons && npm run build",
     "package": "electron-builder --win --x64"
   },
-  "dependencies": {},
+  "dependencies": {
+    "uiohook-napi": "^1.5.5"
+  },
   "devDependencies": {
     "@types/node": "^22.7.5",
     "@types/react": "^18.3.11",
@@ -46,25 +48,34 @@
     },
     "files": [
       "dist/**/*",
-      "dist-electron/**/*",
-      "!node_modules/**/*"
+      "dist-electron/**/*"
+    ],
+    "asarUnpack": [
+      "node_modules/uiohook-napi/**"
     ],
     "extraResources": [
       {
         "from": "build",
         "to": "build",
-        "filter": ["*.png", "*.ico"]
+        "filter": [
+          "*.png",
+          "*.ico"
+        ]
       }
     ],
     "win": {
       "target": [
         {
           "target": "nsis",
-          "arch": ["x64"]
+          "arch": [
+            "x64"
+          ]
         },
         {
           "target": "portable",
-          "arch": ["x64"]
+          "arch": [
+            "x64"
+          ]
         }
       ],
       "icon": "build/icon.ico",

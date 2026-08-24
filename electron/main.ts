@@ -105,7 +105,7 @@ function createWindow() {
     focusable: true,
     show: false,
     backgroundColor: '#00000000',
-    icon: resolveIcon(),
+    icon: windowIcon(),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
@@ -153,11 +153,27 @@ function createWindow() {
   })
 }
 
-function resolveIcon(): Electron.NativeImage | undefined {
+function iconBase(): string {
+  // Packaged: extraResources copies build/* into resources/build/
+  return app.isPackaged
+    ? path.join(process.resourcesPath, 'build')
+    : path.join(__dirname, '..')
+}
+
+function loadIcon(file: string): Electron.NativeImage | undefined {
   try {
-    const p = path.join(__dirname, '../build/icon.png')
-    return nativeImage.createFromPath(p)
+    const img = nativeImage.createFromPath(path.join(iconBase(), file))
+    return img.isEmpty() ? undefined : img
   } catch { return undefined }
+}
+
+function windowIcon(): Electron.NativeImage | undefined {
+  return loadIcon('icon.png') ?? loadIcon('icon.ico')
+}
+
+function trayIcon(): Electron.NativeImage | undefined {
+  // Dedicated full-bleed 16px render stays crisp in the system tray
+  return loadIcon('icon-16.png') ?? loadIcon('icon.ico') ?? loadIcon('icon.png')
 }
 
 const menuHandlers = {
@@ -199,8 +215,8 @@ function pushSettings() {
 function createTray() {
   if (tray) return
   try {
-    const icon = resolveIcon() ?? nativeImage.createEmpty()
-    tray = new Tray(icon.resize({ width: 16, height: 16 }))
+    const icon = trayIcon() ?? nativeImage.createEmpty()
+    tray = new Tray(icon)
     tray.setToolTip('keepBoard · 你的像素桌面宠物')
     if (store) tray.setContextMenu(buildTrayMenu(store.getSettings(), menuHandlers))
     tray.on('click', () => {
@@ -254,18 +270,16 @@ function registerIpc() {
     } catch { return null }
   })
   ipcMain.handle('win:re-dock', () => winMgr?.dockToTaskbar())
+  ipcMain.handle('win:get-pos', () => mainWindow?.getBounds() ?? null)
+  ipcMain.on('win:drag-to', (_e, x: number, y: number) => {
+    if (!mainWindow || typeof x !== 'number' || typeof y !== 'number') return
+    mainWindow.setPosition(Math.round(x), Math.round(y))
+  })
   ipcMain.handle('app:open-path', (_e, p: string) => {
     if (!store) return
     if (p === 'userData') shell.openPath(app.getPath('userData'))
   })
   ipcMain.handle('app:format-duration', (_e, ms: number) => formatDuration(ms))
-  ipcMain.on('stats:key-via-web', (_e, code: string) => {
-    hooker?.emitEvent({ type: 'keypress', subtype: code, ts: Date.now() })
-  })
-  ipcMain.on('stats:click-via-web', (_e, btn: number) => {
-    const type = btn === 2 ? 'mousedown-right' : btn === 1 ? 'mousedown-middle' : 'mousedown-left'
-    hooker?.emitEvent({ type, ts: Date.now() })
-  })
   ipcMain.on('app:quit', () => app.quit())
 }
 
