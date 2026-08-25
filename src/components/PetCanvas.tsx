@@ -1,25 +1,49 @@
 import { useEffect, useRef, useState } from 'react'
 import { drawCustomSprite, PetFrame, PET_CANVAS_W, PET_CANVAS_H } from '@/lib/pets'
 import type { ThemeId } from '@/lib/types'
-import MANIFEST from '@/assets/pets/manifest.json'
+import piranha_open from '@/assets/pets/hd/piranha_idle_open.png'
+import piranha_blink from '@/assets/pets/hd/piranha_idle_blink.png'
+import cactus_open from '@/assets/pets/hd/cactus_idle_open.png'
+import cactus_blink from '@/assets/pets/hd/cactus_idle_blink.png'
+import slime_open from '@/assets/pets/hd/slime_idle_open.png'
+import slime_blink from '@/assets/pets/hd/slime_idle_blink.png'
+import cat_open from '@/assets/pets/hd/cat_idle_open.png'
+import cat_blink from '@/assets/pets/hd/cat_idle_blink.png'
+import mushroom_open from '@/assets/pets/hd/mushroom_idle_open.png'
+import mushroom_blink from '@/assets/pets/hd/mushroom_idle_blink.png'
+import ghost_open from '@/assets/pets/hd/ghost_idle_open.png'
+import ghost_blink from '@/assets/pets/hd/ghost_idle_blink.png'
+import dino_open from '@/assets/pets/hd/dino_idle_open.png'
+import dino_blink from '@/assets/pets/hd/dino_idle_blink.png'
+import robot_open from '@/assets/pets/hd/robot_idle_open.png'
+import robot_blink from '@/assets/pets/hd/robot_idle_blink.png'
+import pumpkin_open from '@/assets/pets/hd/pumpkin_idle_open.png'
+import pumpkin_blink from '@/assets/pets/hd/pumpkin_idle_blink.png'
+import penguin_open from '@/assets/pets/hd/penguin_idle_open.png'
+import penguin_blink from '@/assets/pets/hd/penguin_idle_blink.png'
+import alien_open from '@/assets/pets/hd/alien_idle_open.png'
+import alien_blink from '@/assets/pets/hd/alien_idle_blink.png'
+import fox_open from '@/assets/pets/hd/fox_idle_open.png'
+import fox_blink from '@/assets/pets/hd/fox_idle_blink.png'
 
-// Vite eager-loads every generated frame so theme switches are instant.
-const FRAMES = import.meta.glob('@/assets/pets/*.png', {
-  eager: true,
-  query: '?url',
-  import: 'default'
-}) as Record<string, string>
-
-function frameUrl(name: string): string | undefined {
-  return FRAMES[`/src/assets/pets/${name}`]
+const FRAMES: Record<string, { open: string; blink: string }> = {
+  piranha: { open: piranha_open, blink: piranha_blink },
+  cactus: { open: cactus_open, blink: cactus_blink },
+  slime: { open: slime_open, blink: slime_blink },
+  cat: { open: cat_open, blink: cat_blink },
+  mushroom: { open: mushroom_open, blink: mushroom_blink },
+  ghost: { open: ghost_open, blink: ghost_blink },
+  dino: { open: dino_open, blink: dino_blink },
+  robot: { open: robot_open, blink: robot_blink },
+  pumpkin: { open: pumpkin_open, blink: pumpkin_blink },
+  penguin: { open: penguin_open, blink: penguin_blink },
+  alien: { open: alien_open, blink: alien_blink },
+  fox: { open: fox_open, blink: fox_blink }
 }
 
 interface PetFrames {
   open: HTMLImageElement
   blink: HTMLImageElement
-  eyeL: [number, number, number, number] | null
-  eyeR: [number, number, number, number] | null
-  mouth: [number, number, number] | null
 }
 
 const FRAME_CACHE = new Map<string, PetFrames>()
@@ -27,24 +51,16 @@ const FRAME_CACHE = new Map<string, PetFrames>()
 function loadFrames(pet: string): Promise<PetFrames | null> {
   const cached = FRAME_CACHE.get(pet)
   if (cached) return Promise.resolve(cached)
-  const def = (MANIFEST as unknown as { pets: Record<string, {
-    frames: [string, string]
-    eyeL: [number, number, number, number] | null
-    eyeR: [number, number, number, number] | null
-    mouth: [number, number, number] | null
-  }> }).pets[pet]
-  if (!def) return Promise.resolve(null)
-  const openUrl = frameUrl(def.frames[0])
-  const blinkUrl = frameUrl(def.frames[1])
-  if (!openUrl || !blinkUrl) return Promise.resolve(null)
+  const pair = FRAMES[pet]
+  if (!pair) return Promise.resolve(null)
   const load = (src: string) => new Promise<HTMLImageElement>((res, rej) => {
     const im = new Image()
     im.onload = () => res(im)
     im.onerror = rej
     im.src = src
   })
-  return Promise.all([load(openUrl), load(blinkUrl)]).then(([open, blink]) => {
-    const pack: PetFrames = { open, blink, eyeL: def.eyeL, eyeR: def.eyeR, mouth: def.mouth }
+  return Promise.all([load(pair.open), load(pair.blink)]).then(([open, blink]) => {
+    const pack: PetFrames = { open, blink }
     FRAME_CACHE.set(pet, pack)
     return pack
   }).catch(() => null)
@@ -251,9 +267,9 @@ export default function PetCanvas({ theme, overlayActive, customFile }: Props) {
       if (!frames) return
       const blinking = f.eyeClosed > 0.5
       const img = blinking ? frames.blink : frames.open
-      const scale = Math.min((PET_CANVAS_H * 0.78) / 32, (PET_CANVAS_W * 0.72) / 32)
-      const w = 32 * scale
-      const h = 32 * scale
+      const scale = Math.min((PET_CANVAS_H * 0.82) / 128, (PET_CANVAS_W * 0.76) / 128)
+      const w = 128 * scale
+      const h = 128 * scale
       const bob = Math.sin(f.leafSway * 1.5) * 2 - f.neckExtend * 4
       const jitX = (Math.random() - 0.5) * 4 * f.shake
       const jitY = (Math.random() - 0.5) * 4 * f.shake
@@ -265,16 +281,6 @@ export default function PetCanvas({ theme, overlayActive, customFile }: Props) {
       c.translate(PET_CANVAS_W / 2 + jitX, PET_CANVAS_H - 30 + jitY)
       c.scale(sx, sy)
       c.drawImage(img, -w / 2, -h + bob, w, h)
-      // procedural mouth from manifest rects (32-space -> drawn space)
-      if (frames.mouth && sq > 0.15) {
-        const [mx, my, mw] = frames.mouth
-        const k = scale
-        const left = -w / 2 + mx * k
-        const top = -h + bob + my * k
-        const mh = Math.max(1, Math.round(sq * 3)) * k
-        c.fillStyle = '#181828'
-        c.fillRect(left, top, mw * k, mh)
-      }
       c.restore()
     }
 
@@ -293,7 +299,7 @@ export default function PetCanvas({ theme, overlayActive, customFile }: Props) {
       }
       const mouthOpen = frenzyProgress > 0
         ? 0.3 + 0.7 * (0.5 + 0.5 * Math.sin(now / 40))
-        : easeOutCubic(1 - biteProgress)
+        : biteProgress
       const neckExtend = breathe + easeOutBack(1 - extendProgress) * 0.7 + frenzyProgress * 0.3
       const frame: PetFrame = {
         neckExtend,
@@ -311,7 +317,7 @@ export default function PetCanvas({ theme, overlayActive, customFile }: Props) {
     // the store cache and reused �?never re-measured at runtime.
     const ready = isCustom ? !!customImgRef.current : !!frames
     if (ready) {
-      const key = `v4:${isCustom ? `custom:${customFile || ''}` : theme}`
+      const key = `v5:${isCustom ? `custom:${customFile || ''}` : theme}`
       let alive = true
       window.keepboard?.getSavedBox?.(key).then((saved: { x: number; y: number; w: number; h: number } | null) => {
         if (!alive) return
@@ -382,7 +388,6 @@ export default function PetCanvas({ theme, overlayActive, customFile }: Props) {
 }
 
 function clamp01(v: number) { return Math.max(0, Math.min(1, v)) }
-function easeOutCubic(x: number): number { return 1 - Math.pow(1 - x, 3) }
 function easeOutBack(x: number): number {
   const c1 = 1.70158
   const c3 = c1 + 1
