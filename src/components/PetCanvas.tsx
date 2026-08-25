@@ -188,19 +188,26 @@ export default function PetCanvas({ theme, overlayActive, customFile }: Props) {
   }
 
   // Load the uploaded custom sprite (as data URL — works in both dev & packaged)
+  const customStampRef = useRef<string>('')
   useEffect(() => {
     if (theme !== 'custom') return
     let alive = true
-    window.keepboard?.getCustomPetData?.().then((url: string | null) => {
+    window.keepboard?.getCustomPetData?.().then((d: { url: string; stamp: string } | null) => {
       if (!alive) return
-      if (!url) { customImgRef.current = null; setCustomReady((v) => v + 1); return }
+      if (!d || !d.url) {
+        customImgRef.current = null
+        customStampRef.current = ''
+        setCustomReady((v) => v + 1)
+        return
+      }
       const im = new Image()
       im.onload = () => {
         if (!alive) return
         customImgRef.current = im
+        customStampRef.current = d.stamp
         setCustomReady((v) => v + 1)
       }
-      im.src = url
+      im.src = d.url
     }).catch(() => { })
     return () => { alive = false }
   }, [theme, customFile])
@@ -253,16 +260,32 @@ export default function PetCanvas({ theme, overlayActive, customFile }: Props) {
     }
     rafRef.current = requestAnimationFrame(tick)
 
-    // Shrink-wrap the OS window to this theme's art extents (+ animation pad).
-    // Canvas stays in full 220x240 space and is shifted via CSS margins, so the
-    // art lands exactly where it was on screen while the window hugs it tight.
-    // Skipped for custom sprites until the image has loaded (customReady).
+    // Apply the window content box for this theme.
+    // Bounds are measured ONCE per theme (or per uploaded custom image),
+    // persisted in the store, and reused forever — the window is never
+    // re-measured/resized at runtime afterwards.
+    const apply = (box: { x: number; y: number; w: number; h: number }) => {
+      setOffset({ x: box.x, y: box.y })
+      window.keepboard?.setContentBox?.(box)
+    }
+    const key = isCustom
+      ? `custom:${customStampRef.current}:${customImgRef.current?.naturalWidth || 0}x${customImgRef.current?.naturalHeight || 0}`
+      : theme
     if (!isCustom || customImgRef.current) {
-      try {
-        const box = measureArt(drawer)
-        setOffset({ x: box.x, y: box.y })
-        window.keepboard?.setContentBox?.(box)
-      } catch { /* keep default window size */ }
+      let alive = true
+      window.keepboard?.getSavedBox?.(key).then((saved: { x: number; y: number; w: number; h: number } | null) => {
+        if (!alive) return
+        if (saved && saved.w > 0 && saved.h > 0) {
+          apply(saved)
+          return
+        }
+        try {
+          const box = measureArt(drawer)
+          void window.keepboard?.saveBox?.(key, box)
+          apply(box)
+        } catch { /* keep default window size */ }
+      }).catch(() => { })
+      return () => { alive = false; cancelAnimationFrame(rafRef.current) }
     }
 
     return () => cancelAnimationFrame(rafRef.current)

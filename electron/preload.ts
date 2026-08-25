@@ -18,7 +18,12 @@ const api = {
 
   chooseCustomPet: (): Promise<boolean> => ipcRenderer.invoke('custom:choose'),
   clearCustomPet: (): Promise<boolean> => ipcRenderer.invoke('custom:clear'),
-  getCustomPetData: (): Promise<string | null> => ipcRenderer.invoke('custom:get-data'),
+  getCustomPetData: (): Promise<{ url: string; stamp: string } | null> => ipcRenderer.invoke('custom:get-data'),
+
+  getSavedBox: (key: string): Promise<{ x: number; y: number; w: number; h: number } | null> =>
+    ipcRenderer.invoke('bounds:get', key),
+  saveBox: (key: string, box: { x: number; y: number; w: number; h: number }): Promise<boolean> =>
+    ipcRenderer.invoke('bounds:set', key, box),
 
   getSettings: (): Promise<Settings> => ipcRenderer.invoke('settings:get'),
   setSettings: (patch: Partial<Settings>): Promise<Settings> => ipcRenderer.invoke('settings:set', patch),

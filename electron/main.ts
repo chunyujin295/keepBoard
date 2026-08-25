@@ -19,6 +19,10 @@ let hooker: GlobalHooker | null = null
 
 const isDev = process.env.NODE_ENV === 'development'
 const WINDOW_SIZE = { width: 220, height: 240 }
+// Content-box currently applied to the pet window (canvas buffer coordinates).
+// Used to move the window by the DELTA between boxes — without this the origin
+// drifts on every resize (the reported "window keeps growing" bug).
+let lastBox: { x: number; y: number; w: number; h: number } = { x: 0, y: 0, w: WINDOW_SIZE.width, h: WINDOW_SIZE.height }
 // Wayland forbids global input hooks and programmatic window positioning —
 // degrade gracefully instead of attempting native capture.
 const isWayland = !!process.env.WAYLAND_DISPLAY || process.env.XDG_SESSION_TYPE === 'wayland'
@@ -94,6 +98,7 @@ function maybePushStats() {
 
 function createWindow() {
   const settings = store!.getSettings()
+  lastBox = { x: 0, y: 0, w: WINDOW_SIZE.width, h: WINDOW_SIZE.height }
   mainWindow = new BrowserWindow({
     width: WINDOW_SIZE.width,
     height: WINDOW_SIZE.height,
@@ -261,6 +266,12 @@ function registerIpc() {
   ipcMain.handle('settings:get', () => store?.getSettings())
   ipcMain.handle('settings:set', (_e, patch: Partial<Settings>) => applySettingsPatch(patch))
   ipcMain.handle('themes:list', () => THEME_LIST)
+  ipcMain.handle('bounds:get', (_e, key: string) => store?.getBound(String(key ?? '')) ?? null)
+  ipcMain.handle('bounds:set', (_e, key: string, box: { x: number; y: number; w: number; h: number }) => {
+    if (!store || typeof key !== 'string' || !key || !box) return false
+    store.setBound(key, box)
+    return true
+  })
   ipcMain.handle('stats:daily', () => store?.getDaily(todayKey()))
   ipcMain.handle('stats:weekly', () => store?.getWeekly(new Date()))
   ipcMain.handle('stats:weekly-at', (_e, offset = 0) => {
@@ -293,17 +304,22 @@ function registerIpc() {
     if (!mainWindow || typeof x !== 'number' || typeof y !== 'number') return
     mainWindow.setPosition(Math.round(x), Math.round(y))
   })
-  // Shrink/grow the pet window to wrap the theme art (renderer-measured box,
-  // offsets are relative to current window origin so the art stays in place).
+  // Shrink/grow the pet window to wrap the theme art.
+  // The canvas is CSS-shifted by -offset, so buffer point P sits at screen
+  // (winOrigin + P - lastBox). Keeping the art visually anchored therefore
+  // requires moving the origin by the DELTA between boxes:
+  //   newOrigin = curOrigin + (box.xy - lastBox.xy)
+  // Missing this subtraction caused cumulative drift ("self-growing window").
   ipcMain.on('win:set-content-box', (_e, box: { x: number; y: number; w: number; h: number }) => {
     if (!mainWindow || !box) return
     const [cx, cy] = mainWindow.getPosition()
     mainWindow.setBounds({
-      x: cx + Math.round(box.x),
-      y: cy + Math.round(box.y),
+      x: cx + Math.round(box.x - lastBox.x),
+      y: cy + Math.round(box.y - lastBox.y),
       width: Math.max(40, Math.min(WINDOW_SIZE.width, Math.round(box.w))),
       height: Math.max(40, Math.min(WINDOW_SIZE.height, Math.round(box.h)))
     })
+    lastBox = { ...box }
     // Re-snap to the taskbar with the NEW size (avoids races with the
     // debounced 'move' handler running against stale dimensions).
     if (store?.getSettings().autoDock) {
@@ -347,7 +363,7 @@ function registerIpc() {
     applySettingsPatch({ customPetFile: `customPet.${ext}`, theme: 'custom' })
     return true
   })
-  ipcMain.handle('custom:get-data', (): string | null => {
+  ipcMain.handle('custom:get-data', (): { url: string; stamp: string } | null => {
     const f = store?.getSettings().customPetFile
     if (!f) return null
     try {
@@ -357,7 +373,13 @@ function registerIpc() {
           : f.toLowerCase().endsWith('.webp') ? 'webp'
             : f.toLowerCase().endsWith('.gif') ? 'gif' : 'png'
       const b = fs.readFileSync(p)
-      return `data:image/${mime};base64,${b.toString('base64')}`
+      let stamp = 0
+      try { stamp = Math.floor(fs.statSync(p).mtimeMs) } catch { /* ignore */ }
+      return {
+        url: `data:image/${mime};base64,${b.toString('base64')}`,
+        // Unique-ish cache key component: same name + mtime = same content
+        stamp: `${f}:${stamp}`
+      }
     } catch { return null }
   })
   ipcMain.handle('custom:clear', () => {

@@ -4,9 +4,18 @@ import fs from 'node:fs'
 import { DailyStats, EMPTY_DAILY, Settings, DEFAULT_SETTINGS, WeeklyStats } from './types'
 import { todayKey, getWeekRange, buildWeeklyStats, addDays } from './statsUtils'
 
+export interface ContentBox {
+  x: number
+  y: number
+  w: number
+  h: number
+}
+
 type StoreShape = {
   settings: Settings
   daily: Record<string, DailyStats>
+  /** Measured theme art extents, keyed by theme (custom themes include file stamp). */
+  bounds: Record<string, ContentBox>
 }
 
 export class AppStore {
@@ -25,7 +34,7 @@ export class AppStore {
   private load(): StoreShape {
     try {
       if (!fs.existsSync(this.file)) {
-        const fresh: StoreShape = { settings: { ...DEFAULT_SETTINGS }, daily: {} }
+        const fresh: StoreShape = { settings: { ...DEFAULT_SETTINGS }, daily: {}, bounds: {} }
         this.save(fresh)
         return fresh
       }
@@ -33,10 +42,11 @@ export class AppStore {
       const parsed = JSON.parse(raw) as Partial<StoreShape>
       return {
         settings: { ...DEFAULT_SETTINGS, ...(parsed.settings ?? {}) },
-        daily: parsed.daily ?? {}
+        daily: parsed.daily ?? {},
+        bounds: parsed.bounds ?? {}
       }
     } catch {
-      return { settings: { ...DEFAULT_SETTINGS }, daily: {} }
+      return { settings: { ...DEFAULT_SETTINGS }, daily: {}, bounds: {} }
     }
   }
 
@@ -89,6 +99,20 @@ export class AppStore {
       this.save()
     }
   }
+
+  // ---------- Theme bounds cache ----------
+  // Measured ONCE per theme (or per uploaded custom image), then reused forever
+  // so the window is never resized repeatedly at runtime.
+  getBound(key: string): ContentBox | null {
+    return this.data.bounds[key] ?? null
+  }
+
+  setBound(key: string, box: ContentBox) {
+    this.data.bounds[key] = box
+    this.scheduleSave()
+  }
+
+  // ---------- Theme bounds cache end ----------
 
   // ---------- Weekly stats ----------
   getWeekly(ref = new Date()): WeeklyStats {
