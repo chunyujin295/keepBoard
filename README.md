@@ -1,7 +1,7 @@
 # keepBoard
 
 <p align="center">
-  <img src="./docs/img/icon.png" alt="keepBoard icon" width="180">
+  <img src="./assets/icons/icon.png" alt="keepBoard icon" width="180">
 </p>
 
 像素风 Windows 桌面宠物 + 键鼠/屏幕时间统计工具。一只会咬人的食人花蹲在你的任务栏旁，你每敲一下键盘、点一下鼠标，它都会张嘴回应——同时默默记录你的每一次输入。
@@ -94,13 +94,15 @@ keepBoard/
 │   ├── windowManager.ts # 任务栏吸附逻辑
 │   └── menu.ts          # 托盘菜单、开机自启
 ├── src/                 # 渲染进程 (React)
-│   ├── components/      # 宠物画布、今日/每周/设置面板、右键菜单
-│   └── lib/             # 像素绘制引擎与 9 款主题
+│   ├── components/      # 宠物画布、今日/每周/设置面板
+│   └── lib/             # 像素绘制引擎与 12 款主题
+├── assets/icons/        # 应用图标（托盘/窗口/安装包，已入库）
+├── docs/                # 文档（自定义形象说明等）
 ├── scripts/
 │   ├── generate-icons.mjs  # 字符画 → PNG/ICO 图标生成器
 │   ├── dev.cmd             # 一键开发脚本
 │   └── build-installer.cmd # 一键打包脚本
-└── build/               # 生成的图标（git 忽略，打包时自动重新生成）
+└── dist/ dist-electron/ release/   # 构建产物（git 忽略，可随时重新生成）
 ```
 
 ## 📜 License

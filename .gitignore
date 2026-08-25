@@ -1,24 +1,36 @@
-# Dependencies
+# ============ 可再生产物（安全忽略） ============
+# 以下内容均可由源码完整重建，换电脑后按 README 执行即可恢复：
+
+# 依赖包 —— 恢复: npm install（package-lock.json 已入库，保证版本一致）
 node_modules/
 
-# Build outputs
+# 渲染层构建产物 —— 再生: npm run build:vite
 dist/
+
+# 主进程编译产物 —— 再生: npm run build:electron
 dist-electron/
+
+# 打包安装程序 —— 再生: npm run package
 release/
-build/
+
+# electron-builder / node-gyp 下载缓存 —— 自动重建
 .electron-cache/
+
+# TypeScript 增量编译信息与误产物 —— 构建时自动生成
 *.tsbuildinfo
 vite.config.js
 vite.config.d.ts
 
-# Logs
+# ============ 注意 ============
+# assets/icons/ （应用图标）是运行时/安装包必需的资源，已提交入库，
+# 不要加入忽略列表！
+
+# ============ 日志 / 系统文件 / 本地环境 ============
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 
-# OS junk
 .DS_Store
 Thumbs.db
 
-# Env / local
 *.local

@@ -1,7 +1,9 @@
 /**
  * Generate keepBoard pixel-art app icon.
  * Design: a red piranha popping out of a keyboard keycap ("keepBoard").
- * Outputs: build/icon.png (512x512), build/icon.ico (multi-size)
+ * Outputs to assets/icons/ (COMMITTED — runtime & installer resource):
+ *   assets/icons/icon.png (512x512), assets/icons/icon.ico (multi-size),
+ *   assets/icons/icon-{16..256}.png
  * Run:  node scripts/generate-icons.mjs
  */
 import { PNG } from 'pngjs'
@@ -11,8 +13,8 @@ import { fileURLToPath } from 'node:url'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const ROOT = path.resolve(__dirname, '..')
-const BUILD_DIR = path.join(ROOT, 'build')
-fs.mkdirSync(BUILD_DIR, { recursive: true })
+const OUT_DIR = path.join(ROOT, 'assets', 'icons')
+fs.mkdirSync(OUT_DIR, { recursive: true })
 
 // ---- palette RGBA ----
 const rgba = (r, g, b, a = 255) => [r, g, b, a]
@@ -119,7 +121,7 @@ function renderTo(size) {
 
 function writePng(name, size) {
   const buf = renderTo(size)
-  const out = path.join(BUILD_DIR, name)
+  const out = path.join(OUT_DIR, name)
   fs.writeFileSync(out, buf)
   console.log(`  wrote ${path.relative(ROOT, out)}`)
   return buf
@@ -134,13 +136,7 @@ writePng('icon-128.png', 128)
 writePng('icon-256.png', 256)
 const buf512 = writePng('icon.png', 512)
 // keep an extra copy so tray can find it
-fs.copyFileSync(path.join(BUILD_DIR, 'icon.png'), path.join(BUILD_DIR, 'icon-512.png'))
-
-// Committed copy for README display (build/ is gitignored)
-const readmeDir = path.join(ROOT, 'docs', 'img')
-fs.mkdirSync(readmeDir, { recursive: true })
-fs.writeFileSync(path.join(readmeDir, 'icon.png'), buf512)
-console.log(`  wrote ${path.relative(ROOT, path.join(readmeDir, 'icon.png'))} (README)`)
+fs.copyFileSync(path.join(OUT_DIR, 'icon.png'), path.join(OUT_DIR, 'icon-512.png'))
 
 // ---- Build multi-size ICO ----
 const icoSizes = [16, 32, 48, 64, 128, 256]
@@ -174,6 +170,6 @@ for (const p of pngs) {
   entries.push(e)
 }
 const icoBuf = Buffer.concat([header, ...entries, ...pngs.map(p => p.data)])
-const icoPath = path.join(BUILD_DIR, 'icon.ico')
+const icoPath = path.join(OUT_DIR, 'icon.ico')
 fs.writeFileSync(icoPath, icoBuf)
 console.log(`  wrote ${path.relative(ROOT, icoPath)} (${icoSizes.join('/')} sizes)`)

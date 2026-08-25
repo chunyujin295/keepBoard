@@ -157,10 +157,11 @@ function createWindow() {
 }
 
 function iconBase(): string {
-  // Packaged: extraResources copies build/* into resources/build/
+  // Dev: committed resource at assets/icons. Packaged: extraResources copies
+  // assets/icons/* into resources/build/ (see package.json extraResources).
   return app.isPackaged
     ? path.join(process.resourcesPath, 'build')
-    : path.join(__dirname, '..')
+    : path.join(__dirname, '..', 'assets', 'icons')
 }
 
 function loadIcon(file: string): Electron.NativeImage | undefined {
