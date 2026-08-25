@@ -1,20 +1,13 @@
 import { BrowserWindow, screen } from 'electron'
 import { TaskbarInfo, TaskbarEdge } from './taskbar'
 
-export interface WindowSize {
-  width: number
-  height: number
-}
-
 export class WindowManager {
   private win: BrowserWindow
-  private size: WindowSize
   private taskbar: TaskbarInfo
   private readonly DOCK_MARGIN = 4
 
-  constructor(win: BrowserWindow, size: WindowSize, taskbar: TaskbarInfo) {
+  constructor(win: BrowserWindow, taskbar: TaskbarInfo) {
     this.win = win
-    this.size = size
     this.taskbar = taskbar
   }
 
@@ -27,52 +20,56 @@ export class WindowManager {
   }
 
   dockToTaskbar() {
-    const currentBounds = this.win.getBounds()
+    // Use LIVE bounds: the window is shrink-wrapped to the pet art per theme,
+    // so its size changes at runtime.
+    const cur = this.win.getBounds()
+    const width = cur.width
+    const height = cur.height
     const display = screen.getDisplayNearestPoint({
-      x: currentBounds.x + this.size.width / 2,
-      y: currentBounds.y + this.size.height / 2
+      x: cur.x + width / 2,
+      y: cur.y + height / 2
     })
     const workArea = display.workArea
     this.taskbar = this.refreshTaskbar(display)
 
     const center = {
-      x: currentBounds.x + this.size.width / 2,
-      y: currentBounds.y + this.size.height / 2
+      x: cur.x + width / 2,
+      y: cur.y + height / 2
     }
 
     const tgt = this.taskbar
     const margin = tgt.autoHide ? 2 : this.DOCK_MARGIN
-    let targetX = currentBounds.x
-    let targetY = currentBounds.y
+    let targetX = cur.x
+    let targetY = cur.y
 
     switch (tgt.edge) {
       case 'bottom':
-        targetY = tgt.rect.y - this.size.height - margin
-        targetX = clamp(center.x - this.size.width / 2,
-          workArea.x, workArea.x + workArea.width - this.size.width)
+        targetY = tgt.rect.y - height - margin
+        targetX = clamp(center.x - width / 2,
+          workArea.x, workArea.x + workArea.width - width)
         break
       case 'top':
         targetY = tgt.rect.y + tgt.rect.height + margin
-        targetX = clamp(center.x - this.size.width / 2,
-          workArea.x, workArea.x + workArea.width - this.size.width)
+        targetX = clamp(center.x - width / 2,
+          workArea.x, workArea.x + workArea.width - width)
         break
       case 'left':
         targetX = tgt.rect.x + tgt.rect.width + margin
-        targetY = clamp(center.y - this.size.height / 2,
-          workArea.y, workArea.y + workArea.height - this.size.height)
+        targetY = clamp(center.y - height / 2,
+          workArea.y, workArea.y + workArea.height - height)
         break
       case 'right':
-        targetX = tgt.rect.x - this.size.width - margin
-        targetY = clamp(center.y - this.size.height / 2,
-          workArea.y, workArea.y + workArea.height - this.size.height)
+        targetX = tgt.rect.x - width - margin
+        targetY = clamp(center.y - height / 2,
+          workArea.y, workArea.y + workArea.height - height)
         break
     }
 
     this.win.setBounds({
       x: Math.round(targetX),
       y: Math.round(targetY),
-      width: this.size.width,
-      height: this.size.height
+      width,
+      height
     })
   }
 

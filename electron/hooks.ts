@@ -7,6 +7,8 @@ export interface HookEvent {
   type: InputEventType
   subtype?: string
   ts: number
+  x?: number
+  y?: number
 }
 
 // Reverse map: uiohook keycode -> constant name (e.g. 30 -> "A", 28 -> "ENTER")
@@ -86,7 +88,12 @@ export class GlobalHooker extends EventEmitter {
           const map: Record<number, InputEventType> = {
             1: 'mousedown-left', 2: 'mousedown-middle', 3: 'mousedown-right'
           }
-          this.emitNative({ type: map[e?.button] ?? 'mousedown-left', ts: Date.now() })
+          this.emitNative({
+            type: map[e?.button] ?? 'mousedown-left',
+            ts: Date.now(),
+            x: typeof e?.x === 'number' ? e.x : undefined,
+            y: typeof e?.y === 'number' ? e.y : undefined
+          })
         })
         hook.on('wheel', () => this.emitNative({ type: 'wheel', ts: Date.now() }))
         hook.start()

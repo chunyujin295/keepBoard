@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import {
   drawPetPiranha, drawPetCactus, drawPetSlime, drawPetCat, drawPetMushroom,
   drawPetGhost, drawPetDino, drawPetRobot, drawPetPumpkin,
@@ -20,6 +20,8 @@ const DRAWERS: Record<ThemeId, (ctx: CanvasRenderingContext2D, f: PetFrame) => v
 
 interface Props {
   theme: ThemeId
+  /** True while panels/masks cover the window — disables click-through logic */
+  overlayActive?: boolean
 }
 
 interface DragState {
@@ -30,7 +32,48 @@ interface DragState {
   lastSent: number
 }
 
-export default function PetCanvas({ theme }: Props) {
+// Padding around the measured art bounding box so animations don't get clipped
+const PAD_L = 6
+const PAD_R = 8
+const PAD_T = 14
+const PAD_B = 4
+
+// Neutral pose for extent measurement (covers typical animation range)
+const MEASURE_FRAME: PetFrame = {
+  neckExtend: 0.6,
+  mouthOpen: 0.35,
+  eyeClosed: 0,
+  leafSway: 0.7,
+  shake: 0
+}
+
+function measureArt(drawer: (ctx: CanvasRenderingContext2D, f: PetFrame) => void): { x: number; y: number; w: number; h: number } {
+  const c = document.createElement('canvas')
+  c.width = PET_CANVAS_W
+  c.height = PET_CANVAS_H
+  const ctx = c.getContext('2d', { willReadFrequently: true })!
+  drawer(ctx, MEASURE_FRAME)
+  const img = ctx.getImageData(0, 0, PET_CANVAS_W, PET_CANVAS_H).data
+  let minX = PET_CANVAS_W, minY = PET_CANVAS_H, maxX = -1, maxY = -1
+  for (let y = 0; y < PET_CANVAS_H; y++) {
+    for (let x = 0; x < PET_CANVAS_W; x++) {
+      if (img[(y * PET_CANVAS_W + x) << 2 | 3] > 10) {
+        if (x < minX) minX = x
+        if (x > maxX) maxX = x
+        if (y < minY) minY = y
+        if (y > maxY) maxY = y
+      }
+    }
+  }
+  if (maxX < 0) return { x: 0, y: 0, w: PET_CANVAS_W, h: PET_CANVAS_H }
+  let bx = Math.max(0, minX - PAD_L)
+  let by = Math.max(0, minY - PAD_T)
+  let bw = Math.min(PET_CANVAS_W - bx, maxX - minX + 1 + PAD_L + PAD_R)
+  let bh = Math.min(PET_CANVAS_H - by, maxY - minY + 1 + PAD_T + PAD_B)
+  return { x: bx, y: by, w: bw, h: bh }
+}
+
+export default function PetCanvas({ theme, overlayActive }: Props) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const rafRef = useRef<number>(0)
   const startTime = useRef<number>(performance.now())
@@ -42,6 +85,9 @@ export default function PetCanvas({ theme }: Props) {
   const lastKeyTsRef = useRef<number>(0)
   const comboCountRef = useRef<number>(0)
   const dragRef = useRef<DragState | null>(null)
+  const ignoreMouseRef = useRef<boolean>(false)
+  const overlayRef = useRef<boolean>(!!overlayActive)
+  const [offset, setOffset] = useState<{ x: number; y: number }>({ x: 0, y: 0 })
 
   const triggerBite = (intensity = 1) => {
     const now = performance.now()
@@ -59,9 +105,49 @@ export default function PetCanvas({ theme }: Props) {
     if (now >= blinkUntilRef.current - 50) blinkUntilRef.current = now + 220
   }
 
+  // ---------- Pixel-perfect mouse pass-through ----------
+  const applyIgnore = (v: boolean) => {
+    if (ignoreMouseRef.current === v) return
+    ignoreMouseRef.current = v
+    window.keepboard?.setIgnoreMouseEvents?.(v, { forward: true })
+  }
+
+  useEffect(() => {
+    overlayRef.current = !!overlayActive
+    if (overlayActive) applyIgnore(false)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [overlayActive])
+
+  useEffect(() => {
+    const onMove = (e: MouseEvent) => {
+      if (overlayRef.current || dragRef.current) return
+      const canvas = canvasRef.current
+      if (!canvas) return
+      const r = canvas.getBoundingClientRect()
+      const lx = Math.floor(e.clientX - r.left)
+      const ly = Math.floor(e.clientY - r.top)
+      if (lx < 0 || ly < 0 || lx >= PET_CANVAS_W || ly >= PET_CANVAS_H) return
+      const dpr = Math.max(1, Math.min(window.devicePixelRatio || 1, 2))
+      const px = canvas.getContext('2d')!.getImageData(lx * dpr, ly * dpr, 1, 1).data[3]
+      applyIgnore(px < 16)
+    }
+    const onLeave = () => {
+      if (!dragRef.current && !overlayRef.current) applyIgnore(true)
+    }
+    window.addEventListener('mousemove', onMove)
+    window.addEventListener('mouseleave', onLeave)
+    document.addEventListener('mouseleave', onLeave)
+    return () => {
+      window.removeEventListener('mousemove', onMove)
+      window.removeEventListener('mouseleave', onLeave)
+      document.removeEventListener('mouseleave', onLeave)
+      window.keepboard?.setIgnoreMouseEvents?.(false)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   // Manual window dragging via IPC. CSS `-webkit-app-region: drag` is NOT used:
-  // drag regions are non-client areas on Windows and swallow right-clicks
-  // (the OS shows the system menu instead of our context menu).
+  // drag regions are non-client areas on Windows and swallow right-clicks.
   const startDrag = (e: React.MouseEvent) => {
     if (e.button !== 0 || dragRef.current) return
     triggerBlink()
@@ -100,7 +186,7 @@ export default function PetCanvas({ theme }: Props) {
     canvas.height = PET_CANVAS_H * dpr
     canvas.style.width = PET_CANVAS_W + 'px'
     canvas.style.height = PET_CANVAS_H + 'px'
-    const ctx = canvas.getContext('2d')!
+    const ctx = canvas.getContext('2d', { willReadFrequently: true })!
     ctx.imageSmoothingEnabled = false
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
     void PET_PIXEL
@@ -135,12 +221,21 @@ export default function PetCanvas({ theme }: Props) {
       rafRef.current = requestAnimationFrame(tick)
     }
     rafRef.current = requestAnimationFrame(tick)
+
+    // Shrink-wrap the OS window to this theme's art extents (+ animation pad).
+    // Canvas stays in full 220x240 space and is shifted via CSS margins, so the
+    // art lands exactly where it was on screen while the window hugs it tight.
+    try {
+      const box = measureArt(drawer)
+      setOffset({ x: box.x, y: box.y })
+      window.keepboard?.setContentBox?.(box)
+    } catch { /* keep default window size */ }
+
     return () => cancelAnimationFrame(rafRef.current)
   }, [theme])
 
   // Drive animations from the MAIN PROCESS global input stream (native hook),
   // NOT from DOM events — DOM events only fire when this window is focused.
-  // keypress -> bite/chomp, any mouse button press -> blink.
   useEffect(() => {
     const off = window.keepboard?.onInputEvent?.((e: { type: string; subtype?: string }) => {
       if (!e) return
@@ -154,10 +249,7 @@ export default function PetCanvas({ theme }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // Fallback-mode data feed ONLY: forward focused-window keystrokes/clicks to
-  // main (which ignores these channels when the native hook is active).
-  // Animations are driven exclusively by the broadcast above, so this never
-  // causes double animation or event loops.
+  // Fallback-mode data feed ONLY (ignored by main when native hook is active)
   useEffect(() => {
     const kd = (e: KeyboardEvent) => { window.keepboard?.reportWebKey?.(e.code || 'AnyKey') }
     window.addEventListener('keydown', kd)
@@ -171,7 +263,9 @@ export default function PetCanvas({ theme }: Props) {
     display: 'block',
     cursor: 'grab',
     userSelect: 'none',
-    touchAction: 'none'
+    touchAction: 'none',
+    marginLeft: -offset.x,
+    marginTop: -offset.y
   }
 
   return (

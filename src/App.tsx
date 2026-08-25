@@ -3,7 +3,6 @@ import PetCanvas from '@/components/PetCanvas'
 import DailyPanel from '@/components/DailyPanel'
 import WeeklyPanel from '@/components/WeeklyPanel'
 import SettingsPanel from '@/components/SettingsPanel'
-import ContextMenu from '@/components/ContextMenu'
 import type { DailyStats, PanelId, Settings, ThemeId, WeeklyStats } from '@/lib/types'
 
 type ThemeList = { id: ThemeId; label: string }[]
@@ -31,7 +30,6 @@ export default function App() {
   const [daily, setDaily] = useState<DailyStats | null>(null)
   const [weekly, setWeekly] = useState<WeeklyStats | null>(null)
   const [panel, setPanel] = useState<PanelId>(null)
-  const [ctxMenu, setCtxMenu] = useState<{ x: number; y: number } | null>(null)
 
   useEffect(() => {
     let offs: Array<() => void> = []
@@ -41,7 +39,7 @@ export default function App() {
     window.keepboard?.getWeekly?.().then((w: WeeklyStats) => setWeekly(w)).catch(() => { })
     offs.push(window.keepboard?.onSettings?.((s: Settings) => setSettings(s)) ?? (() => { }))
     offs.push(window.keepboard?.onDaily?.((d: DailyStats) => setDaily(d)) ?? (() => { }))
-    offs.push(window.keepboard?.onOpenPanel?.((id: PanelId) => { setPanel(id); setCtxMenu(null) }) ?? (() => { }))
+    offs.push(window.keepboard?.onOpenPanel?.((id: PanelId) => setPanel(id)) ?? (() => { }))
     return () => { offs.forEach(off => off?.()) }
   }, [])
 
@@ -55,15 +53,16 @@ export default function App() {
 
   const openMenu = (e: React.MouseEvent) => {
     e.preventDefault()
-    setPanel(null)
-    setCtxMenu({ x: e.clientX, y: e.clientY })
+    // Screen coordinates (DIP) so the standalone menu window can position
+    // itself and flip/clamp to stay fully on-screen.
+    window.keepboard?.openContextMenu?.({ x: e.screenX, y: e.screenY })
   }
 
   const theme: ThemeId = useMemo(() => settings?.theme ?? 'piranha', [settings])
 
   return (
     <div className="app-root" onContextMenu={openMenu}>
-      <PetCanvas theme={theme} />
+      <PetCanvas theme={theme} overlayActive={panel !== null} />
 
       {panel === 'daily' && (
         <div className="panel-mask" onClick={(e) => { e.stopPropagation(); setPanel(null) }}>
@@ -79,18 +78,6 @@ export default function App() {
         <div className="panel-mask" onClick={(e) => { e.stopPropagation(); setPanel(null) }}>
           <SettingsPanel settings={settings} themes={themes as any} onClose={() => setPanel(null)} onChange={changeSettings} />
         </div>
-      )}
-
-      {ctxMenu && (
-        <ContextMenu
-          x={ctxMenu.x}
-          y={ctxMenu.y}
-          settings={settings}
-          themes={themes}
-          onClose={() => setCtxMenu(null)}
-          onOpenPanel={(id) => setPanel(id)}
-          onChange={(patch) => { void changeSettings(patch) }}
-        />
       )}
     </div>
   )

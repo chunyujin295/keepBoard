@@ -16,6 +16,9 @@ let winMgr: WindowManager | null = null
 let tray: Tray | null = null
 let store: AppStore | null = null
 let hooker: GlobalHooker | null = null
+let menuWin: BrowserWindow | null = null
+let menuAnchor: { x: number; y: number } | null = null
+let lastMenuData: { settings: Settings; themes: typeof THEME_LIST } | null = null
 
 const isDev = process.env.NODE_ENV === 'development'
 const WINDOW_SIZE = { width: 220, height: 240 }
@@ -52,8 +55,15 @@ function computeApmInc(keys: number): number {
   return 0
 }
 
-function onInputEvent(ev: { type: string; subtype?: string; ts: number }) {
+function onInputEvent(ev: { type: string; subtype?: string; ts: number; x?: number; y?: number }) {
   if (!store || !mainWindow) return
+  // Dismiss the standalone context-menu window when clicking anywhere outside it
+  if (menuWin?.isVisible() && ev.type.startsWith('mousedown')) {
+    const b = menuWin.getBounds()
+    const inside = ev.x !== undefined && ev.y !== undefined &&
+      ev.x >= b.x && ev.x <= b.x + b.width && ev.y >= b.y && ev.y <= b.y + b.height
+    if (!inside) menuWin.hide()
+  }
   rollIdleSession()
   const date = todayKey()
   store.mutateDaily(date, (d: DailyStats) => {
@@ -121,7 +131,7 @@ function createWindow() {
 
   const primaryDisplay = screen.getPrimaryDisplay()
   const taskbar = detectTaskbar(primaryDisplay.bounds, primaryDisplay.workArea)
-  winMgr = new WindowManager(mainWindow, WINDOW_SIZE, taskbar)
+  winMgr = new WindowManager(mainWindow, taskbar)
   if (settings.autoDock) winMgr.dockToTaskbar()
 
   if (isDev) {
@@ -212,6 +222,85 @@ function pushSettings() {
   mainWindow.webContents.send('settings:update', store.getSettings())
 }
 
+// Apply a settings patch with all side effects (shared by IPC + menu window)
+function applySettingsPatch(patch: Partial<Settings>): Settings | undefined {
+  if (!store) return undefined
+  const s = store.updateSettings(patch)
+  if (patch.autoStart !== undefined) applyAutoStart(patch.autoStart)
+  if (patch.alwaysOnTop !== undefined) {
+    mainWindow?.setAlwaysOnTop(!!patch.alwaysOnTop, patch.alwaysOnTop ? 'screen-saver' : 'normal')
+  }
+  if (patch.autoDock) winMgr?.dockToTaskbar()
+  pushSettings()
+  return s
+}
+
+// ---------- Standalone context-menu window ----------
+const MENU_W = 150
+
+function ensureMenuWindow(): BrowserWindow {
+  if (menuWin) return menuWin
+  menuWin = new BrowserWindow({
+    width: MENU_W,
+    height: 120,
+    show: false,
+    frame: false,
+    transparent: true,
+    resizable: false,
+    movable: false,
+    minimizable: false,
+    maximizable: false,
+    skipTaskbar: true,
+    focusable: false,
+    hasShadow: false,
+    backgroundColor: '#00000000',
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: false
+    }
+  })
+  menuWin.setAlwaysOnTop(true, 'screen-saver')
+  if (isDev) menuWin.loadURL('http://localhost:5173/menu.html')
+  else menuWin.loadFile(path.join(__dirname, '../dist/menu.html'))
+  menuWin.on('closed', () => { menuWin = null })
+  return menuWin
+}
+
+function layoutMenu() {
+  if (!menuWin || !menuAnchor) return
+  const display = screen.getDisplayNearestPoint(menuAnchor)
+  const wa = display.workArea
+  const w = MENU_W
+  const h = Math.min(Math.max(menuWin.getBounds().height, 80), wa.height)
+  let x = menuAnchor.x + 2
+  let y = menuAnchor.y + 2
+  // Flip left / up when overflowing the screen edge
+  if (x + w > wa.x + wa.width) x = menuAnchor.x - w - 2
+  if (y + h > wa.y + wa.height) y = menuAnchor.y - h - 2
+  x = Math.max(wa.x, Math.min(x, wa.x + wa.width - w))
+  y = Math.max(wa.y, Math.min(y, wa.y + wa.height - h))
+  menuWin.setBounds({ x: Math.round(x), y: Math.round(y), width: w, height: Math.round(h) })
+}
+
+function openContextMenuAt(sx: number, sy: number) {
+  if (!store) return
+  menuAnchor = { x: sx, y: sy }
+  lastMenuData = { settings: store.getSettings(), themes: THEME_LIST }
+  const w = ensureMenuWindow()
+  const send = () => {
+    w.webContents.send('menu:data', lastMenuData)
+    layoutMenu()
+    w.showInactive()
+  }
+  if (w.webContents.isLoading()) {
+    w.webContents.once('did-finish-load', send)
+  } else {
+    send()
+  }
+}
+
 function createTray() {
   if (tray) return
   try {
@@ -234,16 +323,7 @@ function createTray() {
 
 function registerIpc() {
   ipcMain.handle('settings:get', () => store?.getSettings())
-  ipcMain.handle('settings:set', (_e, patch: Partial<Settings>) => {
-    const s = store?.updateSettings(patch)
-    if (patch.autoStart !== undefined && store) applyAutoStart(patch.autoStart)
-    if (patch.alwaysOnTop !== undefined) {
-      mainWindow?.setAlwaysOnTop(!!patch.alwaysOnTop, patch.alwaysOnTop ? 'screen-saver' : 'normal')
-    }
-    if (patch.autoDock) winMgr?.dockToTaskbar()
-    pushSettings()
-    return s
-  })
+  ipcMain.handle('settings:set', (_e, patch: Partial<Settings>) => applySettingsPatch(patch))
   ipcMain.handle('themes:list', () => THEME_LIST)
   ipcMain.handle('stats:daily', () => store?.getDaily(todayKey()))
   ipcMain.handle('stats:weekly', () => store?.getWeekly(new Date()))
@@ -276,6 +356,55 @@ function registerIpc() {
   ipcMain.on('win:drag-to', (_e, x: number, y: number) => {
     if (!mainWindow || typeof x !== 'number' || typeof y !== 'number') return
     mainWindow.setPosition(Math.round(x), Math.round(y))
+  })
+  // Shrink/grow the pet window to wrap the theme art (renderer-measured box,
+  // offsets are relative to current window origin so the art stays in place).
+  ipcMain.on('win:set-content-box', (_e, box: { x: number; y: number; w: number; h: number }) => {
+    if (!mainWindow || !box) return
+    const [cx, cy] = mainWindow.getPosition()
+    mainWindow.setBounds({
+      x: cx + Math.round(box.x),
+      y: cy + Math.round(box.y),
+      width: Math.max(40, Math.min(WINDOW_SIZE.width, Math.round(box.w))),
+      height: Math.max(40, Math.min(WINDOW_SIZE.height, Math.round(box.h)))
+    })
+    // Re-snap to the taskbar with the NEW size (avoids races with the
+    // debounced 'move' handler running against stale dimensions).
+    if (store?.getSettings().autoDock) {
+      setTimeout(() => winMgr?.dockToTaskbar(), 80)
+    }
+  })
+  ipcMain.on('win:set-ignore-mouse-events', (_e, ignore: boolean, options?: { forward?: boolean }) => {
+    mainWindow?.setIgnoreMouseEvents(!!ignore, options ?? undefined)
+  })
+
+  // Standalone context-menu window channels
+  ipcMain.handle('win:open-context-menu', (_e, pt: { x: number; y: number }) => {
+    if (typeof pt?.x === 'number' && typeof pt?.y === 'number') openContextMenuAt(pt.x, pt.y)
+  })
+  ipcMain.on('menu:ready', () => {
+    if (menuWin && lastMenuData) menuWin.webContents.send('menu:data', lastMenuData)
+  })
+  ipcMain.on('menu:height', (_e, h: number) => {
+    if (menuWin?.isVisible() && typeof h === 'number' && h > 0) {
+      menuWin.setBounds({ ...menuWin.getBounds(), height: Math.min(600, Math.max(60, Math.ceil(h) + 8)) })
+      layoutMenu()
+    }
+  })
+  ipcMain.on('menu:action', (_e, a: { type: string; payload?: unknown }) => {
+    menuWin?.hide()
+    if (!a) return
+    switch (a.type) {
+      case 'panel':
+        mainWindow?.webContents.send('ui:open-panel', a.payload as string)
+        break
+      case 'patch':
+        applySettingsPatch(a.payload as Partial<Settings>)
+        break
+      case 'quit':
+        app.quit()
+        break
+    }
   })
   ipcMain.handle('app:open-path', (_e, p: string) => {
     if (!store) return
