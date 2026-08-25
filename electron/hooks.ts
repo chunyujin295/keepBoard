@@ -71,9 +71,14 @@ export class GlobalHooker extends EventEmitter {
     return !!this.nativeModule
   }
 
-  start() {
+  start(skipNative = false) {
     if (this.running) return
     this.running = true
+    if (skipNative) {
+      console.warn('[keepBoard] Wayland session: native global input capture is not supported, stats limited to in-app input.')
+      this.registerInAppForwarding()
+      return
+    }
     try {
       const m = require('uiohook-napi')
       const hook = m?.uIOhook

@@ -19,6 +19,9 @@ let hooker: GlobalHooker | null = null
 
 const isDev = process.env.NODE_ENV === 'development'
 const WINDOW_SIZE = { width: 220, height: 240 }
+// Wayland forbids global input hooks and programmatic window positioning —
+// degrade gracefully instead of attempting native capture.
+const isWayland = !!process.env.WAYLAND_DISPLAY || process.env.XDG_SESSION_TYPE === 'wayland'
 
 // Screen time tracking: sliding session with 30s idle threshold.
 let sessionStartTs = Date.now()
@@ -400,18 +403,24 @@ async function startApp() {
 
   hooker = new GlobalHooker()
   hooker.on('event', onInputEvent)
-  hooker.start()
+  hooker.start(isWayland)
 
   // Make degraded mode visible to the user (stderr is invisible in a
   // windowed packaged app, so surface it via tray balloon).
   if (!hooker.nativeActive) {
-    try {
-      tray?.displayBalloon({
-        iconType: 'warning',
-        title: 'keepBoard 全局监听未启用',
-        content: '已降级为仅统计本窗口内的输入。可能被安全软件拦截，请检查后重启应用。'
-      })
-    } catch { /* ignore */ }
+    if (process.platform === 'win32') {
+      try {
+        tray?.displayBalloon({
+          iconType: 'warning',
+          title: 'keepBoard 全局监听未启用',
+          content: isWayland
+            ? '检测到 Wayland 会话：全局键鼠捕获不可用，已降级为仅统计本窗口内的输入。可切换到 X11 会话获得完整功能。'
+            : '已降级为仅统计本窗口内的输入。可能被安全软件拦截，请检查后重启应用。'
+        })
+      } catch { /* ignore */ }
+    } else {
+      console.warn(`[keepBoard] Global input capture inactive (${isWayland ? 'Wayland' : 'native module unavailable'}).`)
+    }
   }
 
   // Periodic screen-time flusher (for when user idle-sessions end quietly)

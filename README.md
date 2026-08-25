@@ -26,14 +26,20 @@
 ## 📦 环境要求
 
 - [Node.js](https://nodejs.org) ≥ 18（含 npm）
-- Windows 10/11
+- **Windows** 10/11（完整体验）或 **Linux** 桌面（X11 会话）
 
 ## 🚀 快速开始
 
 ### 方式一：一键脚本（推荐）
 
 ```cmd
+:: Windows
 scripts\dev.cmd
+```
+
+```bash
+# Linux / macOS
+bash scripts/dev.sh
 ```
 
 首次运行会自动安装依赖，然后启动 Vite 热更新 + Electron 窗口。
@@ -53,26 +59,53 @@ npm run dev        # 启动开发模式
 
 ## 🧰 打包发布
 
-### 方式一：一键脚本（推荐）
+### Windows
 
 ```cmd
 scripts\build-installer.cmd
 ```
+
+### Linux / macOS（构建 Linux 包）
+
+```bash
+bash scripts/build-installer.sh
+```
+
+两个平台流程完全一致：**清理旧产物 → 重新生成图标 → 全量构建 → electron-builder 打包**。
 
 自动完成：**清理全部旧构建产物**（dist / dist-electron / release / 图标缓存，确保每次都是最新）→ 重新生成像素图标 → 构建渲染层与主进程 → electron-builder 打包。
 
 ### 方式二：手动命令
 
 ```bash
-npm run package    # 含 prepackage 钩子：icons + build + electron-builder
+npm run package          # Windows：含 prepackage 钩子（icons + build + electron-builder）
+npm run package:linux    # Linux：AppImage + deb
 ```
 
 产物输出在 `release\` 目录：
 
 | 文件 | 说明 |
 |------|------|
-| `keepBoard-Setup-<版本>-x64.exe` | NSIS 安装版（可选安装目录、创建桌面/开始菜单快捷方式） |
-| `keepBoard-Portable-<版本>-x64.exe` | 便携单文件版，免安装直接运行 |
+| `keepBoard-Setup-<版本>-x64.exe` | Windows NSIS 安装版（可选安装目录、创建快捷方式） |
+| `keepBoard-Portable-<版本>-x64.exe` | Windows 便携单文件版，免安装直接运行 |
+| `keepBoard-<版本>-x64.AppImage` | Linux AppImage，chmod +x 后直接运行 |
+| `keepBoard-<版本>-x64.deb` | Debian/Ubuntu 系安装包 |
+
+> ⚠️ Linux 包（AppImage/deb）依赖 mksquashfs 与 fpm 等原生工具，**必须在 Linux 上构建**——直接在目标平台运行上面的脚本即可；Windows 无法交叉产出 Linux 包。
+
+## 🐧 Linux 平台支持说明
+
+| 功能 | X11 会话 | Wayland 会话 |
+|------|----------|--------------|
+| 宠物渲染 / 动画 / 统计 / 面板 | ✅ | ✅ |
+| 全局键鼠捕获 | ✅ | ❌ 系统限制（自动降级为仅统计本窗口） |
+| 透明窗口 / 托盘图标 | ✅* | ✅* |
+| 拖拽移动 / 任务栏吸附 | ⚠️ 取决于 WM | ❌ Wayland 禁止程序自定位窗口 |
+| 开机自启 | ✅ 自动写入 `~/.config/autostart/` | 同左 |
+
+\* GNOME 需安装 AppIndicator 扩展；KDE 原生支持。
+
+检测到 Wayland 时应用会自动降级并在日志中提示，可切换到 X11 会话获得完整功能。
 
 ## 🕹 使用说明
 
@@ -80,7 +113,7 @@ npm run package    # 含 prepackage 钩子：icons + build + electron-builder
 - **不透明度**：**右键点击宠物**循环切换四档（100% → 75% → 50% → 25%）
 - **完整菜单**：系统托盘图标右键（统计 / 主题（含自定义上传）/ 不透明度 / 各项开关 / 设置 / 退出），每次打开均实时反映最新设置
 - **托盘**：左键唤起窗口
-- **数据目录**：设置面板 → 「📂 数据目录」，统计数据存于 `%APPDATA%\keepboard\keepboard-store.json`（自动清理 180 天前的日数据）
+- **数据目录**：设置面板 → 「📂 数据目录」。Windows 在 `%APPDATA%\keepboard`，Linux 在 `~/.config/keepboard`（自动清理 180 天前的日数据）
 
 ## 📁 项目结构
 

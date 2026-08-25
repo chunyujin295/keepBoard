@@ -1,5 +1,7 @@
 import { app, Menu } from 'electron'
 import path from 'node:path'
+import fs from 'node:fs'
+import os from 'node:os'
 import { Settings, ThemeId } from './types'
 
 export interface MenuHandlers {
@@ -98,15 +100,46 @@ export function buildTrayMenu(settings: Settings, h: MenuHandlers): Menu {
 
 export function applyAutoStart(enabled: boolean) {
   const exe = process.execPath
-  const appName = app.getName()
   // Skip when running via node/electron dev binary; only works for installed app
   const isDev = /electron(\.exe)?$/i.test(path.basename(exe)) || !app.isPackaged
   if (isDev) return
+
+  if (process.platform === 'linux') {
+    applyAutoStartLinux(enabled)
+    return
+  }
+  // Windows / macOS
   app.setLoginItemSettings({
     openAtLogin: enabled,
-    openAsHidden: true,
+    openAsHidden: process.platform === 'darwin' ? true : undefined,
     path: exe
   })
+}
+
+// Electron's setLoginItemSettings is a no-op on Linux — write a freedesktop
+// autostart entry instead.
+function applyAutoStartLinux(enabled: boolean) {
+  const dir = path.join(os.homedir(), '.config', 'autostart')
+  const file = path.join(dir, 'keepboard.desktop')
+  if (!enabled) {
+    try { fs.unlinkSync(file) } catch { /* ignore */ }
+    return
+  }
+  const execPath = process.env.APPIMAGE || process.execPath
+  const content = [
+    '[Desktop Entry]',
+    'Type=Application',
+    'Name=keepBoard',
+    'Comment=Pixel desktop pet & input statistics',
+    `Exec=${execPath.includes(' ') ? `"${execPath}"` : execPath}`,
+    'Terminal=false',
+    'X-GNOME-Autostart-enabled=true',
+    ''
+  ].join('\n')
+  try {
+    fs.mkdirSync(dir, { recursive: true })
+    fs.writeFileSync(file, content, 'utf8')
+  } catch { /* ignore */ }
 }
 
 export const THEME_LIST = THEMES
