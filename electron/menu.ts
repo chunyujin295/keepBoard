@@ -13,6 +13,7 @@ export interface MenuHandlers {
   onRedock: () => void
   onQuit: () => void
   onToggleAudio: (next: boolean) => void
+  onOpacity: (v: number) => void
 }
 
 const THEMES: { id: ThemeId; label: string }[] = [
@@ -24,10 +25,17 @@ const THEMES: { id: ThemeId; label: string }[] = [
   { id: 'ghost', label: '👻 幽灵' },
   { id: 'dino', label: '🦖 小恐龙' },
   { id: 'robot', label: '🤖 机器人' },
-  { id: 'pumpkin', label: '🎃 南瓜灯' }
+  { id: 'pumpkin', label: '🎃 南瓜灯' },
+  { id: 'penguin', label: '🐧 企鹅' },
+  { id: 'alien', label: '👾 外星人' },
+  { id: 'fox', label: '🦊 狐狸' },
+  { id: 'custom', label: '🐾 自定义形象' }
 ]
 
+export const OPACITY_LEVELS = [1, 0.75, 0.5, 0.25]
+
 export function buildTrayMenu(settings: Settings, h: MenuHandlers): Menu {
+  const curOpacity = settings.opacity ?? 1
   return Menu.buildFromTemplate([
     { label: '📊 今日统计', click: () => h.onShowDaily() },
     { label: '📈 本周统计', click: () => h.onShowWeekly() },
@@ -39,6 +47,15 @@ export function buildTrayMenu(settings: Settings, h: MenuHandlers): Menu {
         type: 'radio' as const,
         checked: settings.theme === t.id,
         click: () => h.onChangeTheme(t.id)
+      }))
+    },
+    {
+      label: '🌗 不透明度',
+      submenu: OPACITY_LEVELS.map((v) => ({
+        label: `${Math.round(v * 100)}%`,
+        type: 'radio' as const,
+        checked: Math.abs(curOpacity - v) < 0.01,
+        click: () => h.onOpacity(v)
       }))
     },
     { type: 'separator' },

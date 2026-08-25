@@ -10,8 +10,11 @@ interface Props {
 
 const THEME_PREV: Record<ThemeId, string> = {
   piranha: '🌱', cactus: '🌵', slime: '🟢', cat: '🐱', mushroom: '🍄',
-  ghost: '👻', dino: '🦖', robot: '🤖', pumpkin: '🎃'
+  ghost: '👻', dino: '🦖', robot: '🤖', pumpkin: '🎃',
+  penguin: '🐧', alien: '👾', fox: '🦊', custom: '🐾'
 }
+
+const OPACITY_STEPS = [1, 0.75, 0.5, 0.25]
 
 export default function SettingsPanel({ settings, themes, onClose, onChange }: Props) {
   const [local, setLocal] = useState<Settings | null>(settings)
@@ -67,6 +70,32 @@ export default function SettingsPanel({ settings, themes, onClose, onChange }: P
         <Toggle label="🧲 自动吸附任务栏" value={s.autoDock} onChange={(v) => set({ autoDock: v })} />
         <Toggle label="🔝 始终置顶" value={s.alwaysOnTop} onChange={(v) => set({ alwaysOnTop: v })} />
         <Toggle label="🔊 音效反馈" value={s.audioEnabled} onChange={(v) => set({ audioEnabled: v })} />
+
+        <div className="panel-row">
+          <span className="panel-k">🌗 不透明度</span>
+          <span className="seg">
+            {OPACITY_STEPS.map((v) => (
+              <button
+                key={v}
+                className={'seg-btn' + (Math.abs((s.opacity ?? 1) - v) < 0.01 ? ' active' : '')}
+                onClick={() => set({ opacity: v })}
+              >{Math.round(v * 100)}</button>
+            ))}
+          </span>
+        </div>
+
+        <div className="panel-row big">
+          <span className="panel-k">🐾 自定义形象</span>
+        </div>
+        <div className="panel-actions" style={{ marginTop: 2 }}>
+          <button className="pixel-btn small" onClick={() => { void window.keepboard?.chooseCustomPet?.() }}>📁 上传图片…</button>
+          <button
+            className="pixel-btn small"
+            disabled={!s.customPetFile && s.theme !== 'custom'}
+            onClick={() => { void window.keepboard?.clearCustomPet?.() }}
+          >↺ 恢复默认</button>
+        </div>
+        <span className="hint">支持 PNG / JPG / WebP / BMP / GIF（静态图 + 程序动画），详见 docs/自定义形象说明.md</span>
 
         <div className="panel-row">
           <span className="panel-k">📡 全局监听</span>

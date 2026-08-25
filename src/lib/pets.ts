@@ -548,3 +548,188 @@ export const drawPetPumpkin: PetDrawer = (ctx, f) => {
     drawPixel(ctx, x(15 + i * 5), y(myy + mh - 1), PALETTE.PUMPKIN)
   }
 }
+
+// ---------- Theme 10: Penguin
+export const drawPetPenguin: PetDrawer = (ctx, f) => {
+  const bob = -f.neckExtend * 3
+  const ox = (Math.random() - 0.5) * 4 * f.shake
+  const oy = (Math.random() - 0.5) * 4 * f.shake + bob
+  const baseY = 48
+  const x = (v: number) => v + ox / p()
+  const y = (v: number) => v + oy / p()
+  // Ice ground
+  for (let i = 0; i < 6; i++) {
+    drawPixel(ctx, x(6 + i * 6), y(baseY + 14), PALETTE.GHOST_SHADE)
+    drawPixel(ctx, x(9 + i * 6), y(baseY + 13), PALETTE.GHOST)
+  }
+  // Body (dark back)
+  drawPixelRect(ctx, x(15), y(baseY - 22), 14, 2, '#1A1C2C')
+  drawPixelRect(ctx, x(13), y(baseY - 20), 18, 6, '#1A1C2C')
+  drawPixelRect(ctx, x(12), y(baseY - 14), 20, 16, '#1A1C2C')
+  drawPixelRect(ctx, x(12), y(baseY + 2), 20, 8, '#1A1C2C')
+  // White belly
+  drawPixelRect(ctx, x(16), y(baseY - 12), 12, 4, PALETTE.WHITE)
+  drawPixelRect(ctx, x(15), y(baseY - 8), 14, 10, PALETTE.WHITE)
+  drawPixelRect(ctx, x(16), y(baseY + 2), 12, 4, PALETTE.WHITE)
+  // Face patch
+  drawPixelRect(ctx, x(15), y(baseY - 19), 14, 5, PALETTE.WHITE)
+  // Eyes
+  if (f.eyeClosed > 0.5) {
+    drawPixelRect(ctx, x(17), y(baseY - 17), 3, 1, PALETTE.BLACK)
+    drawPixelRect(ctx, x(24), y(baseY - 17), 3, 1, PALETTE.BLACK)
+  } else {
+    drawPixelRect(ctx, x(17), y(baseY - 19), 3, 3, PALETTE.BLACK)
+    drawPixelRect(ctx, x(24), y(baseY - 19), 3, 3, PALETTE.BLACK)
+    drawPixel(ctx, x(18), y(baseY - 18), PALETTE.WHITE)
+    drawPixel(ctx, x(25), y(baseY - 18), PALETTE.WHITE)
+  }
+  // Beak opens downward when biting
+  const open = Math.round(f.mouthOpen * 3)
+  drawPixelRect(ctx, x(20), y(baseY - 14), 4, 2, PALETTE.YELLOW)
+  if (open > 0) drawPixelRect(ctx, x(20), y(baseY - 12 + open), 4, 2, PALETTE.YELLOW)
+  // Cheeks
+  drawPixel(ctx, x(14), y(baseY - 15), PALETTE.CHEEK)
+  drawPixel(ctx, x(29), y(baseY - 15), PALETTE.CHEEK)
+  // Flapping wings
+  const flap = Math.round(Math.sin(f.leafSway) * 2)
+  drawPixelRect(ctx, x(11 - flap), y(baseY - 10), 2, 10, '#1A1C2C')
+  drawPixelRect(ctx, x(31 + flap), y(baseY - 10), 2, 10, '#1A1C2C')
+  drawPixel(ctx, x(11 - flap), y(baseY - 1), PALETTE.GHOST_DEEP)
+  drawPixel(ctx, x(32 + flap), y(baseY - 1), PALETTE.GHOST_DEEP)
+  // Feet
+  drawPixelRect(ctx, x(16), y(baseY + 10), 5, 2, '#F5A623')
+  drawPixelRect(ctx, x(23), y(baseY + 10), 5, 2, '#F5A623')
+}
+
+// ---------- Theme 11: Alien Invader
+export const drawPetAlien: PetDrawer = (ctx, f) => {
+  const hover = Math.sin(f.leafSway * 1.4) * 3 - f.neckExtend * 5
+  const ox = (Math.random() - 0.5) * 4 * f.shake
+  const oy = (Math.random() - 0.5) * 4 * f.shake + hover
+  const baseY = 48
+  const x = (v: number) => v + ox / p()
+  const y = (v: number) => v + oy / p()
+  // Ground shadow shrinks as it hovers
+  const shW = 14 - Math.round(hover / 2)
+  drawPixelRect(ctx, x(21 - shW / 2), y(baseY + 13), shW, 2, PALETTE.GHOST_SHADE)
+  // Antennae
+  const swayA = Math.round(Math.sin(f.leafSway * 2) * 1.5)
+  drawPixelRect(ctx, x(17), y(baseY - 26), 2, 5, PALETTE.DINO_DARK)
+  drawPixelRect(ctx, x(25), y(baseY - 26), 2, 5, PALETTE.DINO_DARK)
+  drawPixel(ctx, x(17 + swayA), y(baseY - 28), PALETTE.LED_RED)
+  drawPixel(ctx, x(26 + swayA), y(baseY - 28), PALETTE.LED_RED)
+  // Blocky invader body
+  drawPixelRect(ctx, x(14), y(baseY - 21), 16, 2, PALETTE.DINO_LIGHT)
+  drawPixelRect(ctx, x(12), y(baseY - 19), 20, 12, PALETTE.DINO)
+  drawPixelRect(ctx, x(10), y(baseY - 15), 24, 6, PALETTE.DINO)
+  drawPixelRect(ctx, x(12), y(baseY - 9), 20, 4, PALETTE.DINO_DARK)
+  // Eyes
+  if (f.eyeClosed > 0.5) {
+    drawPixelRect(ctx, x(16), y(baseY - 15), 4, 1, PALETTE.BLACK)
+    drawPixelRect(ctx, x(24), y(baseY - 15), 4, 1, PALETTE.BLACK)
+  } else {
+    drawPixelRect(ctx, x(16), y(baseY - 17), 4, 4, PALETTE.BLACK)
+    drawPixelRect(ctx, x(24), y(baseY - 17), 4, 4, PALETTE.BLACK)
+    drawPixel(ctx, x(18), y(baseY - 16), PALETTE.WHITE)
+    drawPixel(ctx, x(26), y(baseY - 16), PALETTE.WHITE)
+  }
+  // Zigzag mouth widens with bite
+  const mw = 10 + Math.round(f.mouthOpen * 6)
+  const myy = baseY - 10
+  for (let i = 0; i < mw; i += 2) {
+    drawPixel(ctx, x(21 - mw / 2 + i), y(myy), PALETTE.BLACK)
+    drawPixel(ctx, x(22 - mw / 2 + i), y(myy + 1), PALETTE.BLACK)
+  }
+  if (f.mouthOpen > 0.4) {
+    drawPixel(ctx, x(21 - mw / 2), y(myy), PALETTE.TEETH)
+    drawPixel(ctx, x(20 + mw / 2), y(myy), PALETTE.TEETH)
+  }
+  // Little legs
+  drawPixelRect(ctx, x(14), y(baseY - 5), 4, 4, PALETTE.DINO_DARK)
+  drawPixelRect(ctx, x(20), y(baseY - 5), 4, 4, PALETTE.DINO_DARK)
+  drawPixelRect(ctx, x(26), y(baseY - 5), 4, 4, PALETTE.DINO_DARK)
+}
+
+// ---------- Theme 12: Fox
+export const drawPetFox: PetDrawer = (ctx, f) => {
+  const wag = Math.round(Math.sin(f.leafSway) * 2)
+  const ox = (Math.random() - 0.5) * 4 * f.shake
+  const oy = (Math.random() - 0.5) * 4 * f.shake
+  const baseY = 48
+  const x = (v: number) => v + ox / p()
+  const y = (v: number) => v + oy / p()
+  // Grass tufts
+  for (let i = 0; i < 5; i++) {
+    drawPixel(ctx, x(7 + i * 7), y(baseY + 14), PALETTE.LEAF)
+  }
+  // Bushy tail with white tip
+  drawPixelRect(ctx, x(29 + wag), y(baseY - 6), 6, 10, PALETTE.PUMPKIN)
+  drawPixelRect(ctx, x(30 + wag), y(baseY + 2), 5, 4, PALETTE.WHITE)
+  drawPixelRect(ctx, x(34 + wag), y(baseY - 4), 2, 8, PALETTE.PUMPKIN_DARK)
+  // Body
+  drawPixelRect(ctx, x(15), y(baseY - 8), 16, 16, PALETTE.PUMPKIN)
+  drawPixelRect(ctx, x(15), y(baseY - 8), 16, 1, PALETTE.PUMPKIN_DARK)
+  drawPixelRect(ctx, x(18), y(baseY - 4), 10, 11, PALETTE.TEETH)
+  // Head
+  drawPixelRect(ctx, x(13), y(baseY - 22), 18, 12, PALETTE.PUMPKIN)
+  // Ears (dark tips)
+  drawPixelRect(ctx, x(13), y(baseY - 27), 4, 5, PALETTE.PUMPKIN)
+  drawPixelRect(ctx, x(27), y(baseY - 27), 4, 5, PALETTE.PUMPKIN)
+  drawPixel(ctx, x(14), y(baseY - 27), PALETTE.POT_DARK)
+  drawPixel(ctx, x(15), y(baseY - 26), PALETTE.POT_DARK)
+  drawPixel(ctx, x(29), y(baseY - 27), PALETTE.POT_DARK)
+  drawPixel(ctx, x(28), y(baseY - 26), PALETTE.POT_DARK)
+  drawPixel(ctx, x(14), y(baseY - 23), PALETTE.CHEEK)
+  drawPixel(ctx, x(29), y(baseY - 23), PALETTE.CHEEK)
+  // White muzzle
+  drawPixelRect(ctx, x(16), y(baseY - 16), 12, 6, PALETTE.WHITE)
+  // Eyes
+  if (f.eyeClosed > 0.5) {
+    drawPixelRect(ctx, x(17), y(baseY - 17), 3, 1, PALETTE.BLACK)
+    drawPixelRect(ctx, x(25), y(baseY - 17), 3, 1, PALETTE.BLACK)
+  } else {
+    drawPixelRect(ctx, x(17), y(baseY - 19), 3, 3, PALETTE.BLACK)
+    drawPixelRect(ctx, x(25), y(baseY - 19), 3, 3, PALETTE.BLACK)
+    drawPixel(ctx, x(18), y(baseY - 18), PALETTE.WHITE)
+    drawPixel(ctx, x(26), y(baseY - 18), PALETTE.WHITE)
+  }
+  // Nose + jaw
+  drawPixelRect(ctx, x(21), y(baseY - 15), 3, 2, PALETTE.BLACK)
+  const jaw = Math.round(f.mouthOpen * 3)
+  if (jaw > 0) {
+    drawPixelRect(ctx, x(20), y(baseY - 13 + jaw), 6, jaw, PALETTE.BLACK)
+    drawPixel(ctx, x(20), y(baseY - 13 + jaw), PALETTE.TEETH)
+    drawPixel(ctx, x(25), y(baseY - 13 + jaw), PALETTE.TEETH)
+  } else {
+    drawPixel(ctx, x(23), y(baseY - 12), PALETTE.BLACK)
+  }
+  // Front paws
+  drawPixelRect(ctx, x(17), y(baseY + 8), 5, 3, PALETTE.PUMPKIN_DARK)
+  drawPixelRect(ctx, x(24), y(baseY + 8), 5, 3, PALETTE.PUMPKIN_DARK)
+}
+
+// ---------- Custom user sprite (procedural motion over a static image)
+export function drawCustomSprite(
+  ctx: CanvasRenderingContext2D,
+  frame: PetFrame,
+  img: HTMLImageElement | null
+) {
+  if (!img || !img.width || !img.height) return
+  const ox = (Math.random() - 0.5) * 4 * frame.shake
+  const oy = (Math.random() - 0.5) * 4 * frame.shake
+  const maxH = PET_CANVAS_H * 0.68
+  const maxW = PET_CANVAS_W * 0.55
+  let scale = Math.min(maxH / img.height, maxW / img.width)
+  scale = Math.max(scale, 0.05)
+  const w = img.width * scale
+  const h = img.height * scale
+  const bob = Math.sin(frame.leafSway * 1.5) * 3 - frame.neckExtend * 6
+  const squashX = 1 + frame.mouthOpen * 0.07
+  const squashY = 1 - frame.mouthOpen * 0.07
+  ctx.save()
+  ctx.imageSmoothingEnabled = false
+  ctx.translate(PET_CANVAS_W / 2 + ox, PET_CANVAS_H - 34 + oy)
+  ctx.scale(squashX, squashY)
+  ctx.drawImage(img, -w / 2, -h + bob, w, h)
+  ctx.restore()
+}

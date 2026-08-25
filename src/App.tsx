@@ -12,7 +12,9 @@ const FALLBACK_THEMES: ThemeList = [
   { id: 'slime', label: '🟢 史莱姆' }, { id: 'cat', label: '🐱 像素猫' },
   { id: 'mushroom', label: '🍄 马里奥蘑菇' }, { id: 'ghost', label: '👻 幽灵' },
   { id: 'dino', label: '🦖 小恐龙' }, { id: 'robot', label: '🤖 机器人' },
-  { id: 'pumpkin', label: '🎃 南瓜灯' }
+  { id: 'pumpkin', label: '🎃 南瓜灯' }, { id: 'penguin', label: '🐧 企鹅' },
+  { id: 'alien', label: '👾 外星人' }, { id: 'fox', label: '🦊 狐狸' },
+  { id: 'custom', label: '🐾 自定义形象' }
 ]
 
 function formatDurationLocal(ms: number): string {
@@ -53,16 +55,19 @@ export default function App() {
 
   const openMenu = (e: React.MouseEvent) => {
     e.preventDefault()
-    // Screen coordinates (DIP) so the standalone menu window can position
-    // itself and flip/clamp to stay fully on-screen.
-    window.keepboard?.openContextMenu?.({ x: e.screenX, y: e.screenY })
+    // Right-click cycles window opacity: 100 -> 75 -> 50 -> 25 -> 100
+    void window.keepboard?.cycleOpacity?.()
   }
 
   const theme: ThemeId = useMemo(() => settings?.theme ?? 'piranha', [settings])
 
   return (
     <div className="app-root" onContextMenu={openMenu}>
-      <PetCanvas theme={theme} overlayActive={panel !== null} />
+      <PetCanvas
+        theme={theme}
+        overlayActive={panel !== null}
+        customFile={settings?.customPetFile || undefined}
+      />
 
       {panel === 'daily' && (
         <div className="panel-mask" onClick={(e) => { e.stopPropagation(); setPanel(null) }}>

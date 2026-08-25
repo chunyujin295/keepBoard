@@ -2,11 +2,13 @@ import { useEffect, useRef, useState } from 'react'
 import {
   drawPetPiranha, drawPetCactus, drawPetSlime, drawPetCat, drawPetMushroom,
   drawPetGhost, drawPetDino, drawPetRobot, drawPetPumpkin,
+  drawPetPenguin, drawPetAlien, drawPetFox,
+  drawCustomSprite,
   PetFrame, PET_CANVAS_W, PET_CANVAS_H, PET_PIXEL
 } from '@/lib/pets'
 import type { ThemeId } from '@/lib/types'
 
-const DRAWERS: Record<ThemeId, (ctx: CanvasRenderingContext2D, f: PetFrame) => void> = {
+const DRAWERS: Partial<Record<ThemeId, (ctx: CanvasRenderingContext2D, f: PetFrame) => void>> = {
   piranha: drawPetPiranha,
   cactus: drawPetCactus,
   slime: drawPetSlime,
@@ -15,13 +17,18 @@ const DRAWERS: Record<ThemeId, (ctx: CanvasRenderingContext2D, f: PetFrame) => v
   ghost: drawPetGhost,
   dino: drawPetDino,
   robot: drawPetRobot,
-  pumpkin: drawPetPumpkin
+  pumpkin: drawPetPumpkin,
+  penguin: drawPetPenguin,
+  alien: drawPetAlien,
+  fox: drawPetFox
 }
 
 interface Props {
   theme: ThemeId
   /** True while panels/masks cover the window — disables click-through logic */
   overlayActive?: boolean
+  /** Filename of the uploaded custom sprite (reload trigger) */
+  customFile?: string
 }
 
 interface DragState {
@@ -73,7 +80,7 @@ function measureArt(drawer: (ctx: CanvasRenderingContext2D, f: PetFrame) => void
   return { x: bx, y: by, w: bw, h: bh }
 }
 
-export default function PetCanvas({ theme, overlayActive }: Props) {
+export default function PetCanvas({ theme, overlayActive, customFile }: Props) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const rafRef = useRef<number>(0)
   const startTime = useRef<number>(performance.now())
@@ -87,7 +94,9 @@ export default function PetCanvas({ theme, overlayActive }: Props) {
   const dragRef = useRef<DragState | null>(null)
   const ignoreMouseRef = useRef<boolean>(false)
   const overlayRef = useRef<boolean>(!!overlayActive)
+  const customImgRef = useRef<HTMLImageElement | null>(null)
   const [offset, setOffset] = useState<{ x: number; y: number }>({ x: 0, y: 0 })
+  const [customReady, setCustomReady] = useState(0)
 
   const triggerBite = (intensity = 1) => {
     const now = performance.now()
@@ -178,6 +187,24 @@ export default function PetCanvas({ theme, overlayActive }: Props) {
     }).catch(() => { })
   }
 
+  // Load the uploaded custom sprite (as data URL — works in both dev & packaged)
+  useEffect(() => {
+    if (theme !== 'custom') return
+    let alive = true
+    window.keepboard?.getCustomPetData?.().then((url: string | null) => {
+      if (!alive) return
+      if (!url) { customImgRef.current = null; setCustomReady((v) => v + 1); return }
+      const im = new Image()
+      im.onload = () => {
+        if (!alive) return
+        customImgRef.current = im
+        setCustomReady((v) => v + 1)
+      }
+      im.src = url
+    }).catch(() => { })
+    return () => { alive = false }
+  }, [theme, customFile])
+
   useEffect(() => {
     const canvas = canvasRef.current
     if (!canvas) return
@@ -191,7 +218,11 @@ export default function PetCanvas({ theme, overlayActive }: Props) {
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
     void PET_PIXEL
 
-    const drawer = DRAWERS[theme] ?? drawPetPiranha
+    const isCustom = theme === 'custom'
+    const drawer = (c: CanvasRenderingContext2D, f: PetFrame) => {
+      if (isCustom) drawCustomSprite(c, f, customImgRef.current)
+      else (DRAWERS[theme] ?? drawPetPiranha)(c, f)
+    }
 
     const tick = () => {
       const now = performance.now()
@@ -225,14 +256,17 @@ export default function PetCanvas({ theme, overlayActive }: Props) {
     // Shrink-wrap the OS window to this theme's art extents (+ animation pad).
     // Canvas stays in full 220x240 space and is shifted via CSS margins, so the
     // art lands exactly where it was on screen while the window hugs it tight.
-    try {
-      const box = measureArt(drawer)
-      setOffset({ x: box.x, y: box.y })
-      window.keepboard?.setContentBox?.(box)
-    } catch { /* keep default window size */ }
+    // Skipped for custom sprites until the image has loaded (customReady).
+    if (!isCustom || customImgRef.current) {
+      try {
+        const box = measureArt(drawer)
+        setOffset({ x: box.x, y: box.y })
+        window.keepboard?.setContentBox?.(box)
+      } catch { /* keep default window size */ }
+    }
 
     return () => cancelAnimationFrame(rafRef.current)
-  }, [theme])
+  }, [theme, customReady])
 
   // Drive animations from the MAIN PROCESS global input stream (native hook),
   // NOT from DOM events — DOM events only fire when this window is focused.
@@ -272,7 +306,7 @@ export default function PetCanvas({ theme, overlayActive }: Props) {
     <canvas
       ref={canvasRef}
       style={style}
-      title="左键拖动 · 右键打开菜单"
+      title="左键拖动 · 右键调透明度"
       onMouseDown={startDrag}
       aria-label="keepBoard 像素宠物"
     />

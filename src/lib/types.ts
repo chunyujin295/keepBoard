@@ -1,6 +1,8 @@
 export type ThemeId =
   | 'piranha' | 'cactus' | 'slime' | 'cat' | 'mushroom'
   | 'ghost' | 'dino' | 'robot' | 'pumpkin'
+  | 'penguin' | 'alien' | 'fox'
+  | 'custom'
 
 export interface Settings {
   theme: ThemeId
@@ -10,6 +12,8 @@ export interface Settings {
   audioEnabled: boolean
   volume: number
   dockEdge: 'auto' | 'top' | 'bottom' | 'left' | 'right'
+  opacity: number
+  customPetFile?: string
 }
 
 export interface DailyStats {

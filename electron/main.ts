@@ -7,7 +7,7 @@ import { detectTaskbar } from './taskbar'
 import { WindowManager } from './windowManager'
 import { AppStore } from './store'
 import { GlobalHooker, classifyKey } from './hooks'
-import { buildTrayMenu, applyAutoStart, THEME_LIST } from './menu'
+import { buildTrayMenu, applyAutoStart, OPACITY_LEVELS, THEME_LIST } from './menu'
 import { DailyStats, Settings, ThemeId, WeeklyStats } from './types'
 import { todayKey, weeklyToCsv } from './statsUtils'
 
@@ -16,9 +16,6 @@ let winMgr: WindowManager | null = null
 let tray: Tray | null = null
 let store: AppStore | null = null
 let hooker: GlobalHooker | null = null
-let menuWin: BrowserWindow | null = null
-let menuAnchor: { x: number; y: number } | null = null
-let lastMenuData: { settings: Settings; themes: typeof THEME_LIST } | null = null
 
 const isDev = process.env.NODE_ENV === 'development'
 const WINDOW_SIZE = { width: 220, height: 240 }
@@ -57,13 +54,6 @@ function computeApmInc(keys: number): number {
 
 function onInputEvent(ev: { type: string; subtype?: string; ts: number; x?: number; y?: number }) {
   if (!store || !mainWindow) return
-  // Dismiss the standalone context-menu window when clicking anywhere outside it
-  if (menuWin?.isVisible() && ev.type.startsWith('mousedown')) {
-    const b = menuWin.getBounds()
-    const inside = ev.x !== undefined && ev.y !== undefined &&
-      ev.x >= b.x && ev.x <= b.x + b.width && ev.y >= b.y && ev.y <= b.y + b.height
-    if (!inside) menuWin.hide()
-  }
   rollIdleSession()
   const date = todayKey()
   store.mutateDaily(date, (d: DailyStats) => {
@@ -140,7 +130,10 @@ function createWindow() {
     mainWindow.loadFile(path.join(__dirname, '../dist/index.html'))
   }
 
-  mainWindow.once('ready-to-show', () => { mainWindow?.show() })
+  mainWindow.once('ready-to-show', () => {
+    mainWindow?.setOpacity(store?.getSettings().opacity ?? 1)
+    mainWindow?.show()
+  })
 
   let moveTimer: NodeJS.Timeout | null = null
   mainWindow.on('move', () => {
@@ -212,8 +205,10 @@ const menuHandlers = {
   onRedock: () => winMgr?.dockToTaskbar(),
   onQuit: () => app.quit(),
   onToggleAudio: (next: boolean) => {
-    store?.updateSettings({ audioEnabled: next })
-    pushSettings()
+    applySettingsPatch({ audioEnabled: next })
+  },
+  onOpacity: (v: number) => {
+    applySettingsPatch({ opacity: v })
   }
 }
 
@@ -222,7 +217,7 @@ function pushSettings() {
   mainWindow.webContents.send('settings:update', store.getSettings())
 }
 
-// Apply a settings patch with all side effects (shared by IPC + menu window)
+// Apply a settings patch with all side effects (shared by IPC + tray menu)
 function applySettingsPatch(patch: Partial<Settings>): Settings | undefined {
   if (!store) return undefined
   const s = store.updateSettings(patch)
@@ -230,75 +225,12 @@ function applySettingsPatch(patch: Partial<Settings>): Settings | undefined {
   if (patch.alwaysOnTop !== undefined) {
     mainWindow?.setAlwaysOnTop(!!patch.alwaysOnTop, patch.alwaysOnTop ? 'screen-saver' : 'normal')
   }
+  if (patch.opacity !== undefined && mainWindow) {
+    mainWindow.setOpacity(patch.opacity)
+  }
   if (patch.autoDock) winMgr?.dockToTaskbar()
   pushSettings()
   return s
-}
-
-// ---------- Standalone context-menu window ----------
-const MENU_W = 150
-
-function ensureMenuWindow(): BrowserWindow {
-  if (menuWin) return menuWin
-  menuWin = new BrowserWindow({
-    width: MENU_W,
-    height: 120,
-    show: false,
-    frame: false,
-    transparent: true,
-    resizable: false,
-    movable: false,
-    minimizable: false,
-    maximizable: false,
-    skipTaskbar: true,
-    focusable: false,
-    hasShadow: false,
-    backgroundColor: '#00000000',
-    webPreferences: {
-      preload: path.join(__dirname, 'preload.js'),
-      contextIsolation: true,
-      nodeIntegration: false,
-      sandbox: false
-    }
-  })
-  menuWin.setAlwaysOnTop(true, 'screen-saver')
-  if (isDev) menuWin.loadURL('http://localhost:5173/menu.html')
-  else menuWin.loadFile(path.join(__dirname, '../dist/menu.html'))
-  menuWin.on('closed', () => { menuWin = null })
-  return menuWin
-}
-
-function layoutMenu() {
-  if (!menuWin || !menuAnchor) return
-  const display = screen.getDisplayNearestPoint(menuAnchor)
-  const wa = display.workArea
-  const w = MENU_W
-  const h = Math.min(Math.max(menuWin.getBounds().height, 80), wa.height)
-  let x = menuAnchor.x + 2
-  let y = menuAnchor.y + 2
-  // Flip left / up when overflowing the screen edge
-  if (x + w > wa.x + wa.width) x = menuAnchor.x - w - 2
-  if (y + h > wa.y + wa.height) y = menuAnchor.y - h - 2
-  x = Math.max(wa.x, Math.min(x, wa.x + wa.width - w))
-  y = Math.max(wa.y, Math.min(y, wa.y + wa.height - h))
-  menuWin.setBounds({ x: Math.round(x), y: Math.round(y), width: w, height: Math.round(h) })
-}
-
-function openContextMenuAt(sx: number, sy: number) {
-  if (!store) return
-  menuAnchor = { x: sx, y: sy }
-  lastMenuData = { settings: store.getSettings(), themes: THEME_LIST }
-  const w = ensureMenuWindow()
-  const send = () => {
-    w.webContents.send('menu:data', lastMenuData)
-    layoutMenu()
-    w.showInactive()
-  }
-  if (w.webContents.isLoading()) {
-    w.webContents.once('did-finish-load', send)
-  } else {
-    send()
-  }
 }
 
 function createTray() {
@@ -307,16 +239,16 @@ function createTray() {
     const icon = trayIcon() ?? nativeImage.createEmpty()
     tray = new Tray(icon)
     tray.setToolTip('keepBoard · 你的像素桌面宠物')
-    if (store) tray.setContextMenu(buildTrayMenu(store.getSettings(), menuHandlers))
     tray.on('click', () => {
       if (!mainWindow) createWindow()
       else if (mainWindow.isMinimized()) mainWindow.restore()
       else mainWindow.show()
     })
+    // Rebuild the menu from CURRENT settings on every right-click and pass it
+    // directly to popUpContextMenu — never caches stale state.
     tray.on('right-click', () => {
       if (!store) return
-      tray?.setContextMenu(buildTrayMenu(store.getSettings(), menuHandlers))
-      tray?.popUpContextMenu()
+      tray?.popUpContextMenu(buildTrayMenu(store.getSettings(), menuHandlers))
     })
   } catch { /* ignore */ }
 }
@@ -378,34 +310,61 @@ function registerIpc() {
     mainWindow?.setIgnoreMouseEvents(!!ignore, options ?? undefined)
   })
 
-  // Standalone context-menu window channels
-  ipcMain.handle('win:open-context-menu', (_e, pt: { x: number; y: number }) => {
-    if (typeof pt?.x === 'number' && typeof pt?.y === 'number') openContextMenuAt(pt.x, pt.y)
+  // Cycle window opacity: 100% -> 75% -> 50% -> 25% -> 100%
+  ipcMain.handle('win:cycle-opacity', () => {
+    if (!store) return undefined
+    const cur = store.getSettings().opacity ?? 1
+    const idx = OPACITY_LEVELS.findIndex((v) => Math.abs(v - cur) < 0.01)
+    const next = OPACITY_LEVELS[(idx + 1 + OPACITY_LEVELS.length) % OPACITY_LEVELS.length]
+    applySettingsPatch({ opacity: next })
+    return next
   })
-  ipcMain.on('menu:ready', () => {
-    if (menuWin && lastMenuData) menuWin.webContents.send('menu:data', lastMenuData)
-  })
-  ipcMain.on('menu:height', (_e, h: number) => {
-    if (menuWin?.isVisible() && typeof h === 'number' && h > 0) {
-      menuWin.setBounds({ ...menuWin.getBounds(), height: Math.min(600, Math.max(60, Math.ceil(h) + 8)) })
-      layoutMenu()
+
+  // Custom user sprite management
+  const CUSTOM_EXTS = ['png', 'jpg', 'jpeg', 'webp', 'bmp', 'gif']
+  ipcMain.handle('custom:choose', async (): Promise<boolean> => {
+    if (!store || !mainWindow) return false
+    const r = await dialog.showOpenDialog(mainWindow, {
+      title: '选择宠物形象图片',
+      filters: [{ name: '图片文件', extensions: CUSTOM_EXTS }],
+      properties: ['openFile']
+    })
+    if (r.canceled || !r.filePaths[0]) return false
+    let ext = (r.filePaths[0].split('.').pop() || 'png').toLowerCase()
+    if (!CUSTOM_EXTS.includes(ext)) return false
+    if (ext === 'jpg') ext = 'jpeg'
+    for (const e of CUSTOM_EXTS) {
+      try { fs.unlinkSync(path.join(app.getPath('userData'), `customPet.${e}`)) } catch { /* ignore */ }
     }
+    const dest = path.join(app.getPath('userData'), `customPet.${ext}`)
+    try {
+      fs.copyFileSync(r.filePaths[0], dest)
+    } catch { return false }
+    applySettingsPatch({ customPetFile: `customPet.${ext}`, theme: 'custom' })
+    return true
   })
-  ipcMain.on('menu:action', (_e, a: { type: string; payload?: unknown }) => {
-    menuWin?.hide()
-    if (!a) return
-    switch (a.type) {
-      case 'panel':
-        mainWindow?.webContents.send('ui:open-panel', a.payload as string)
-        break
-      case 'patch':
-        applySettingsPatch(a.payload as Partial<Settings>)
-        break
-      case 'quit':
-        app.quit()
-        break
+  ipcMain.handle('custom:get-data', (): string | null => {
+    const f = store?.getSettings().customPetFile
+    if (!f) return null
+    try {
+      const p = path.join(app.getPath('userData'), f)
+      const mime = f.toLowerCase().endsWith('.jpeg') ? 'jpeg'
+        : f.toLowerCase().endsWith('.bmp') ? 'bmp'
+          : f.toLowerCase().endsWith('.webp') ? 'webp'
+            : f.toLowerCase().endsWith('.gif') ? 'gif' : 'png'
+      const b = fs.readFileSync(p)
+      return `data:image/${mime};base64,${b.toString('base64')}`
+    } catch { return null }
+  })
+  ipcMain.handle('custom:clear', () => {
+    const f = store?.getSettings().customPetFile
+    if (f) {
+      try { fs.unlinkSync(path.join(app.getPath('userData'), f)) } catch { /* ignore */ }
     }
+    applySettingsPatch({ customPetFile: '', theme: 'piranha' })
+    return true
   })
+
   ipcMain.handle('app:open-path', (_e, p: string) => {
     if (!store) return
     if (p === 'userData') shell.openPath(app.getPath('userData'))

@@ -13,18 +13,12 @@ const api = {
     ipcRenderer.send('win:set-content-box', box),
   setIgnoreMouseEvents: (ignore: boolean, options?: { forward: boolean }) =>
     ipcRenderer.send('win:set-ignore-mouse-events', ignore, options),
+  cycleOpacity: (): Promise<number | undefined> => ipcRenderer.invoke('win:cycle-opacity'),
   quitApp: () => ipcRenderer.send('app:quit'),
 
-  openContextMenu: (pt: { x: number; y: number }): Promise<void> =>
-    ipcRenderer.invoke('win:open-context-menu', pt),
-  onMenuData: (cb: (d: unknown) => void) => {
-    const h = (_e: unknown, d: unknown) => cb(d)
-    ipcRenderer.on('menu:data', h)
-    return () => ipcRenderer.off('menu:data', h)
-  },
-  reportMenuReady: (): void => ipcRenderer.send('menu:ready'),
-  reportMenuHeight: (h: number): void => ipcRenderer.send('menu:height', h),
-  sendMenuAction: (a: { type: string; payload?: unknown }): void => ipcRenderer.send('menu:action', a),
+  chooseCustomPet: (): Promise<boolean> => ipcRenderer.invoke('custom:choose'),
+  clearCustomPet: (): Promise<boolean> => ipcRenderer.invoke('custom:clear'),
+  getCustomPetData: (): Promise<string | null> => ipcRenderer.invoke('custom:get-data'),
 
   getSettings: (): Promise<Settings> => ipcRenderer.invoke('settings:get'),
   setSettings: (patch: Partial<Settings>): Promise<Settings> => ipcRenderer.invoke('settings:set', patch),
