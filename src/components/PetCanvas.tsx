@@ -138,11 +138,28 @@ export default function PetCanvas({ theme }: Props) {
     return () => cancelAnimationFrame(rafRef.current)
   }, [theme])
 
+  // Drive animations from the MAIN PROCESS global input stream (native hook),
+  // NOT from DOM events — DOM events only fire when this window is focused.
+  // keypress -> bite/chomp, any mouse button press -> blink.
   useEffect(() => {
-    const kd = (e: KeyboardEvent) => {
-      triggerBite(Math.random() * 0.4 + 0.8)
-      window.keepboard?.reportWebKey?.(e.code || 'AnyKey')
-    }
+    const off = window.keepboard?.onInputEvent?.((e: { type: string; subtype?: string }) => {
+      if (!e) return
+      if (e.type === 'keypress') {
+        triggerBite(Math.random() * 0.4 + 0.8)
+      } else if (typeof e.type === 'string' && e.type.startsWith('mousedown')) {
+        triggerBlink()
+      }
+    })
+    return () => off?.()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // Fallback-mode data feed ONLY: forward focused-window keystrokes/clicks to
+  // main (which ignores these channels when the native hook is active).
+  // Animations are driven exclusively by the broadcast above, so this never
+  // causes double animation or event loops.
+  useEffect(() => {
+    const kd = (e: KeyboardEvent) => { window.keepboard?.reportWebKey?.(e.code || 'AnyKey') }
     window.addEventListener('keydown', kd)
     return () => window.removeEventListener('keydown', kd)
   }, [])
