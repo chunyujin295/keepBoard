@@ -24,6 +24,10 @@ function hslCss(h: number, s: number, l: number): string {
 const RAINBOW = Array.from({ length: 16 }, (_, i) => hslCss(i * 22.5, 0.72, 0.30 + (i % 2) * 0.045))
 
 const R1 = 1, R2 = 2, K2 = 5
+/** fixed camera tilt on X — gives the 3D look while spin stays single-axis */
+const TILT_X = 1.05
+/** angular velocity cap (deg/frame): 3.2 ≈ half a revolution per second */
+const MAX_VEL = 3.2
 
 interface DragState {
   startX: number
@@ -36,23 +40,15 @@ interface DragState {
 export default function PetCanvas({ size, overlayActive }: Props) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const rafRef = useRef(0)
-  const velA = useRef(0.045)
-  const velB = useRef(0.02)
-  const wob = useRef(0)
-  const wp1 = useRef(Math.random() * 6.28)
-  const wp2 = useRef(Math.random() * 6.28)
+  /** spin velocity, deg/frame — 0 at rest, kicked by input, capped at MAX_VEL */
+  const vel = useRef(0)
   const dragRef = useRef<DragState | null>(null)
   const ignoreMouseRef = useRef(false)
   const overlayRef = useRef(!!overlayActive)
 
   const triggerKick = (s: number) => {
-    velA.current = Math.min(0.95, velA.current + (0.10 + Math.random() * 0.22) * s)
-    velB.current = Math.max(-0.7, Math.min(0.7, velB.current + (Math.random() - 0.5) * 0.38 * s))
-    wob.current = Math.min(1.4, wob.current + (0.18 + Math.random() * 0.24) * s)
-    if (Math.random() < 0.4) {
-      wp1.current = Math.random() * 6.28
-      wp2.current = Math.random() * 6.28
-    }
+    // each event ≈ 1° of swing (scaled by input type); linear, capped
+    vel.current = Math.min(MAX_VEL, vel.current + 1.0 * s)
   }
 
   // ---------------- pixel-perfect mouse pass-through ----------------
@@ -163,29 +159,25 @@ export default function PetCanvas({ size, overlayActive }: Props) {
     const COLS = Math.max(24, Math.round(size / 5))
     const CELL = size / COLS
     const ROWS = COLS
-    const K1 = 0.235 * size
+    const K1 = 0.235 * COLS
     const cx = COLS / 2
     const cy = ROWS / 2
     const zbuf = new Float32Array(COLS * ROWS)
     const cbuf = new Uint8Array(COLS * ROWS)
 
-    let A = 0.8
     let B = 0.4
     let colorShift = 0
 
     const tick = () => {
-      const now = performance.now()
-      // decay toward idle spin; wobble fades
-      velA.current += (0.04 - velA.current) * 0.015
-      velB.current += (0.02 - velB.current) * 0.015
-      wob.current *= 0.986
-      // irregular rotation: base spin + damped precession wobble
-      A += velA.current + Math.sin(now * 0.0011 + wp1.current) * wob.current * 0.02
-      B += velB.current + Math.cos(now * 0.0008 + wp2.current) * wob.current * 0.016
-      colorShift += 0.0022 + velA.current * 0.02
+      // linear spin: integrate velocity, exponential friction, static at rest
+      vel.current *= 0.94
+      if (vel.current < 0.02) vel.current = 0
+      B += (vel.current * Math.PI) / 180
+      colorShift += (vel.current / 180) * 0.5
 
-      const cosA = Math.cos(A), sinA = Math.sin(A)
-      const cosB = Math.cos(B), sinB = Math.sin(B)
+    // fixed camera tilt (3D look) — spin happens on B only
+    const cosA = Math.cos(TILT_X), sinA = Math.sin(TILT_X)
+    const cosB = Math.cos(B), sinB = Math.sin(B)
       zbuf.fill(0)
 
       const chars: { x: number; y: number; ch: string; col: string }[] = []
