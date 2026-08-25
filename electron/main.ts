@@ -7,8 +7,8 @@ import { detectTaskbar } from './taskbar'
 import { WindowManager } from './windowManager'
 import { AppStore } from './store'
 import { GlobalHooker, classifyKey } from './hooks'
-import { buildTrayMenu, applyAutoStart, OPACITY_LEVELS, THEME_LIST } from './menu'
-import { DailyStats, Settings, ThemeId, WeeklyStats } from './types'
+import { buildTrayMenu, applyAutoStart, OPACITY_LEVELS } from './menu'
+import { DailyStats, Settings, WeeklyStats } from './types'
 import { todayKey, weeklyToCsv } from './statsUtils'
 import { logSize, rectsClose, getSizeLog } from './sizeLog'
 
@@ -22,11 +22,13 @@ let hooker: GlobalHooker | null = null
 let dragging = false
 
 const isDev = process.env.NODE_ENV === 'development'
-const WINDOW_SIZE = { width: 220, height: 240 }
+function winSize(): number {
+  return Math.max(140, Math.min(320, Math.round(store?.getSettings().windowSize || 220)))
+}
 // Content-box currently applied to the pet window (canvas buffer coordinates).
 // Used to move the window by the DELTA between boxes — without this the origin
 // drifts on every resize (the reported "window keeps growing" bug).
-let lastBox: { x: number; y: number; w: number; h: number } = { x: 0, y: 0, w: WINDOW_SIZE.width, h: WINDOW_SIZE.height }
+let lastBox: { x: number; y: number; w: number; h: number } = { x: 0, y: 0, w: 220, h: 220 }
 // Wayland forbids global input hooks and programmatic window positioning —
 // degrade gracefully instead of attempting native capture.
 const isWayland = !!process.env.WAYLAND_DISPLAY || process.env.XDG_SESSION_TYPE === 'wayland'
@@ -102,10 +104,11 @@ function maybePushStats() {
 
 function createWindow() {
   const settings = store!.getSettings()
-  lastBox = { x: 0, y: 0, w: WINDOW_SIZE.width, h: WINDOW_SIZE.height }
+  const S = winSize()
+  lastBox = { x: 0, y: 0, w: S, h: S }
   mainWindow = new BrowserWindow({
-    width: WINDOW_SIZE.width,
-    height: WINDOW_SIZE.height,
+    width: winSize(),
+    height: winSize(),
     frame: false,
     transparent: true,
     resizable: false,
@@ -209,10 +212,6 @@ const menuHandlers = {
     mainWindow?.setAlwaysOnTop(next, next ? 'screen-saver' : 'normal')
     pushSettings()
   },
-  onChangeTheme: (id: ThemeId) => {
-    store?.updateSettings({ theme: id })
-    pushSettings()
-  },
   onShowDaily: () => { mainWindow?.webContents.send('ui:open-panel', 'daily') },
   onShowWeekly: () => { mainWindow?.webContents.send('ui:open-panel', 'weekly') },
   onShowSettings: () => { mainWindow?.webContents.send('ui:open-panel', 'settings') },
@@ -242,6 +241,18 @@ function applySettingsPatch(patch: Partial<Settings>): Settings | undefined {
   if (patch.opacity !== undefined && mainWindow) {
     mainWindow.setOpacity(patch.opacity)
   }
+  if (patch.windowSize !== undefined && mainWindow) {
+    const size = Math.max(140, Math.min(320, Math.round(patch.windowSize)))
+    const cur = mainWindow.getBounds()
+    mainWindow.setBounds({
+      x: Math.round(cur.x + (cur.width - size) / 2),
+      y: Math.round(cur.y + (cur.height - size) / 2),
+      width: size,
+      height: size
+    })
+    lastBox = { x: 0, y: 0, w: size, h: size }
+    if (store?.getSettings().autoDock) setTimeout(() => winMgr?.dockToTaskbar(), 80)
+  }
   if (patch.autoDock) winMgr?.dockToTaskbar()
   pushSettings()
   return s
@@ -270,7 +281,6 @@ function createTray() {
 function registerIpc() {
   ipcMain.handle('settings:get', () => store?.getSettings())
   ipcMain.handle('settings:set', (_e, patch: Partial<Settings>) => applySettingsPatch(patch))
-  ipcMain.handle('themes:list', () => THEME_LIST)
   ipcMain.handle('bounds:get', (_e, key: string) => store?.getBound(String(key ?? '')) ?? null)
   ipcMain.handle('bounds:set', (_e, key: string, box: { x: number; y: number; w: number; h: number }) => {
     if (!store || typeof key !== 'string' || !key || !box) return false
@@ -328,8 +338,8 @@ function registerIpc() {
     const next = {
       x: cur.x + Math.round(box.x - lastBox.x),
       y: cur.y + Math.round(box.y - lastBox.y),
-      width: Math.max(40, Math.min(WINDOW_SIZE.width, Math.round(box.w))),
-      height: Math.max(40, Math.min(WINDOW_SIZE.height, Math.round(box.h)))
+      width: Math.max(40, Math.min(480, Math.round(box.w))),
+      height: Math.max(40, Math.min(480, Math.round(box.h)))
     }
     // Dedupe gate: never touch the OS window when nothing actually changes.
     if (rectsClose(next, cur)) return
@@ -358,54 +368,6 @@ function registerIpc() {
 
   // Custom user sprite management
   const CUSTOM_EXTS = ['png', 'jpg', 'jpeg', 'webp', 'bmp', 'gif']
-  ipcMain.handle('custom:choose', async (): Promise<boolean> => {
-    if (!store || !mainWindow) return false
-    const r = await dialog.showOpenDialog(mainWindow, {
-      title: '选择宠物形象图片',
-      filters: [{ name: '图片文件', extensions: CUSTOM_EXTS }],
-      properties: ['openFile']
-    })
-    if (r.canceled || !r.filePaths[0]) return false
-    let ext = (r.filePaths[0].split('.').pop() || 'png').toLowerCase()
-    if (!CUSTOM_EXTS.includes(ext)) return false
-    if (ext === 'jpg') ext = 'jpeg'
-    for (const e of CUSTOM_EXTS) {
-      try { fs.unlinkSync(path.join(app.getPath('userData'), `customPet.${e}`)) } catch { /* ignore */ }
-    }
-    const dest = path.join(app.getPath('userData'), `customPet.${ext}`)
-    try {
-      fs.copyFileSync(r.filePaths[0], dest)
-    } catch { return false }
-    applySettingsPatch({ customPetFile: `customPet.${ext}`, theme: 'custom' })
-    return true
-  })
-  ipcMain.handle('custom:get-data', (): { url: string; stamp: string } | null => {
-    const f = store?.getSettings().customPetFile
-    if (!f) return null
-    try {
-      const p = path.join(app.getPath('userData'), f)
-      const mime = f.toLowerCase().endsWith('.jpeg') ? 'jpeg'
-        : f.toLowerCase().endsWith('.bmp') ? 'bmp'
-          : f.toLowerCase().endsWith('.webp') ? 'webp'
-            : f.toLowerCase().endsWith('.gif') ? 'gif' : 'png'
-      const b = fs.readFileSync(p)
-      let stamp = 0
-      try { stamp = Math.floor(fs.statSync(p).mtimeMs) } catch { /* ignore */ }
-      return {
-        url: `data:image/${mime};base64,${b.toString('base64')}`,
-        // Unique-ish cache key component: same name + mtime = same content
-        stamp: `${f}:${stamp}`
-      }
-    } catch { return null }
-  })
-  ipcMain.handle('custom:clear', () => {
-    const f = store?.getSettings().customPetFile
-    if (f) {
-      try { fs.unlinkSync(path.join(app.getPath('userData'), f)) } catch { /* ignore */ }
-    }
-    applySettingsPatch({ customPetFile: '', theme: 'piranha' })
-    return true
-  })
 
   ipcMain.handle('app:open-path', (_e, p: string) => {
     if (!store) return

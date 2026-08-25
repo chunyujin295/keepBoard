@@ -2,13 +2,12 @@ import { app, Menu } from 'electron'
 import path from 'node:path'
 import fs from 'node:fs'
 import os from 'node:os'
-import { Settings, ThemeId } from './types'
+import { Settings } from './types'
 
 export interface MenuHandlers {
   onToggleAutoStart: (next: boolean) => void
   onToggleAutoDock: (next: boolean) => void
   onToggleOnTop: (next: boolean) => void
-  onChangeTheme: (id: ThemeId) => void
   onShowDaily: () => void
   onShowWeekly: () => void
   onShowSettings: () => void
@@ -18,22 +17,6 @@ export interface MenuHandlers {
   onOpacity: (v: number) => void
 }
 
-const THEMES: { id: ThemeId; label: string }[] = [
-  { id: 'piranha', label: '🌱 食人花' },
-  { id: 'cactus', label: '🌵 仙人掌' },
-  { id: 'slime', label: '🟢 史莱姆' },
-  { id: 'cat', label: '🐱 像素猫' },
-  { id: 'mushroom', label: '🍄 马里奥蘑菇' },
-  { id: 'ghost', label: '👻 幽灵' },
-  { id: 'dino', label: '🦖 小恐龙' },
-  { id: 'robot', label: '🤖 机器人' },
-  { id: 'pumpkin', label: '🎃 南瓜灯' },
-  { id: 'penguin', label: '🐧 企鹅' },
-  { id: 'alien', label: '👾 外星人' },
-  { id: 'fox', label: '🦊 狐狸' },
-  { id: 'custom', label: '🐾 自定义形象' }
-]
-
 export const OPACITY_LEVELS = [1, 0.75, 0.5, 0.25]
 
 export function buildTrayMenu(settings: Settings, h: MenuHandlers): Menu {
@@ -42,15 +25,6 @@ export function buildTrayMenu(settings: Settings, h: MenuHandlers): Menu {
     { label: '📊 今日统计', click: () => h.onShowDaily() },
     { label: '📈 本周统计', click: () => h.onShowWeekly() },
     { type: 'separator' },
-    {
-      label: '🎨 主题',
-      submenu: THEMES.map((t) => ({
-        label: t.label,
-        type: 'radio' as const,
-        checked: settings.theme === t.id,
-        click: () => h.onChangeTheme(t.id)
-      }))
-    },
     {
       label: '🌗 不透明度',
       submenu: OPACITY_LEVELS.map((v) => ({
@@ -142,4 +116,3 @@ function applyAutoStartLinux(enabled: boolean) {
   } catch { /* ignore */ }
 }
 
-export const THEME_LIST = THEMES

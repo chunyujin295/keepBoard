@@ -1,7 +1,7 @@
 {
   "name": "keepboard",
   "productName": "keepBoard",
-  "version": "0.7.1",
+  "version": "0.8.0",
   "description": "A pixel-art piranha desktop pet that tracks keystrokes, clicks and screen time.",
   "main": "dist-electron/main.js",
   "author": "keepBoard",
@@ -11,6 +11,9 @@
     "dev:vite": "vite",
     "dev:electron": "wait-on tcp:5173 && tsc -p tsconfig.electron.json && cross-env NODE_ENV=development electron .",
     "icons": "node scripts/generate-icons.mjs",
+    "sprites": "node scripts/generate-sprites.mjs",
+    "sprites:py": "python scripts/generate_sprites.py",
+    "sprites:pipeline": "python scripts/sprite_pipeline.py",
     "clean": "node -e \"const fs=require('fs');['dist','dist-electron','release'].forEach(d=>fs.rmSync(d,{recursive:true,force:true}));['tsconfig.tsbuildinfo','tsconfig.node.tsbuildinfo','vite.config.js','vite.config.d.ts'].forEach(f=>fs.rmSync(f,{force:true}))\"",
     "build:vite": "tsc -b && vite build",
     "build:electron": "tsc -p tsconfig.electron.json",

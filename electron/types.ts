@@ -1,11 +1,5 @@
-export type ThemeId =
-  | 'piranha' | 'cactus' | 'slime' | 'cat' | 'mushroom'
-  | 'ghost' | 'dino' | 'robot' | 'pumpkin'
-  | 'penguin' | 'alien' | 'fox'
-  | 'custom'
-
 export interface Settings {
-  theme: ThemeId
+  windowSize: number
   autoStart: boolean
   autoDock: boolean
   alwaysOnTop: boolean
@@ -13,11 +7,10 @@ export interface Settings {
   volume: number
   dockEdge: 'auto' | 'top' | 'bottom' | 'left' | 'right'
   opacity: number
-  customPetFile?: string
 }
 
 export const DEFAULT_SETTINGS: Settings = {
-  theme: 'piranha',
+  windowSize: 220,
   autoStart: false,
   autoDock: true,
   alwaysOnTop: true,

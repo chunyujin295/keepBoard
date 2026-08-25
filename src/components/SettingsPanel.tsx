@@ -1,22 +1,16 @@
 import { useEffect, useState } from 'react'
-import type { Settings, ThemeId } from '@/lib/types'
+import type { Settings } from '@/lib/types'
 
 interface Props {
   settings: Settings | null
-  themes: { id: ThemeId; label: string }[]
   onClose: () => void
   onChange: (patch: Partial<Settings>) => Promise<Settings | undefined> | Settings | undefined
 }
 
-const THEME_PREV: Record<ThemeId, string> = {
-  piranha: '🌱', cactus: '🌵', slime: '🟢', cat: '🐱', mushroom: '🍄',
-  ghost: '👻', dino: '🦖', robot: '🤖', pumpkin: '🎃',
-  penguin: '🐧', alien: '👾', fox: '🦊', custom: '🐾'
-}
-
 const OPACITY_STEPS = [1, 0.75, 0.5, 0.25]
+const SIZE_STEPS = [160, 200, 240, 280, 320]
 
-export default function SettingsPanel({ settings, themes, onClose, onChange }: Props) {
+export default function SettingsPanel({ settings, onClose, onChange }: Props) {
   const [local, setLocal] = useState<Settings | null>(settings)
   const [hook, setHook] = useState<{ native: boolean; events: number } | null>(null)
   const [sizeLog, setSizeLog] = useState<string[]>([])
@@ -46,6 +40,9 @@ export default function SettingsPanel({ settings, themes, onClose, onChange }: P
     await onChange(patch)
   }
 
+  const size = Math.round(s.windowSize || 220)
+  const chars = Math.max(24, Math.round(size / 5))
+
   return (
     <div className="panel wide" onMouseDown={(e) => e.stopPropagation()}>
       <div className="panel-header">
@@ -54,52 +51,55 @@ export default function SettingsPanel({ settings, themes, onClose, onChange }: P
       </div>
       <div className="panel-grid">
         <div className="panel-row big">
-          <span className="panel-k">🎨 主题</span>
+          <span className="panel-k">🪟 窗口尺寸</span>
         </div>
-        <div className="theme-grid">
-          {themes.map((t) => (
-            <button
-              key={t.id}
-            className={'theme-chip' + (s.theme === t.id ? ' active' : '')}
-            onClick={() => set({ theme: t.id })}
-            title={t.label}
-            >
-              <span className="theme-ico">{THEME_PREV[t.id]}</span>
-              <span className="theme-lab">{t.label.slice(2)}</span>
-            </button>
-          ))}
+        <div className="panel-row">
+          <span className="panel-k dim">大小</span>
+          <span className="panel-v">
+            <input
+              type="range" min={140} max={320} step={20} value={size}
+              onChange={(e) => set({ windowSize: Number(e.target.value) })}
+              style={{ width: 110 }}
+            />
+            <span style={{ display: 'inline-block', width: 34, textAlign: 'right' }}>{size}</span>
+          </span>
+        </div>
+        <div className="panel-row">
+          <span className="panel-k dim">预设</span>
+          <span className="seg">
+            {SIZE_STEPS.map((v) => (
+              <button
+                key={v}
+                className={'seg-btn' + (size === v ? ' active' : '')}
+                onClick={() => set({ windowSize: v })}
+              >{v}</button>
+            ))}
+          </span>
+        </div>
+        <div className="panel-row">
+          <span className="panel-k dim">字符网格</span>
+          <span className="panel-v">~{chars}×{chars}（自适应）</span>
+        </div>
+
+        <div className="panel-row big">
+          <span className="panel-k">🌗 不透明度</span>
+        </div>
+        <div className="panel-row">
+          <span className="seg" style={{ width: '100%', justifyContent: 'space-between' }}>
+            {OPACITY_STEPS.map((v) => (
+              <button
+                key={v}
+                className={'seg-btn' + (Math.abs((s.opacity ?? 1) - v) < 0.01 ? ' active' : '')}
+                onClick={() => set({ opacity: v })}
+              >{Math.round(v * 100)}%</button>
+            ))}
+          </span>
         </div>
 
         <Toggle label="🚀 开机自启" value={s.autoStart} onChange={(v) => set({ autoStart: v })} hint="安装打包后生效" />
         <Toggle label="🧲 自动吸附任务栏" value={s.autoDock} onChange={(v) => set({ autoDock: v })} />
         <Toggle label="🔝 始终置顶" value={s.alwaysOnTop} onChange={(v) => set({ alwaysOnTop: v })} />
         <Toggle label="🔊 音效反馈" value={s.audioEnabled} onChange={(v) => set({ audioEnabled: v })} />
-
-        <div className="panel-row">
-          <span className="panel-k">🌗 不透明度</span>
-          <span className="seg">
-            {OPACITY_STEPS.map((v) => (
-              <button
-                key={v}
-                className={'seg-btn' + (Math.abs((s.opacity ?? 1) - v) < 0.01 ? ' active' : '')}
-                onClick={() => set({ opacity: v })}
-              >{Math.round(v * 100)}</button>
-            ))}
-          </span>
-        </div>
-
-        <div className="panel-row big">
-          <span className="panel-k">🐾 自定义形象</span>
-        </div>
-        <div className="panel-actions" style={{ marginTop: 2 }}>
-          <button className="pixel-btn small" onClick={() => { void window.keepboard?.chooseCustomPet?.() }}>📁 上传图片…</button>
-          <button
-            className="pixel-btn small"
-            disabled={!s.customPetFile && s.theme !== 'custom'}
-            onClick={() => { void window.keepboard?.clearCustomPet?.() }}
-          >↺ 恢复默认</button>
-        </div>
-        <span className="hint">支持 PNG / JPG / WebP / BMP / GIF（静态图 + 程序动画），详见 docs/自定义形象说明.md</span>
 
         <div className="panel-row">
           <span className="panel-k">📡 全局监听</span>
@@ -114,18 +114,6 @@ export default function SettingsPanel({ settings, themes, onClose, onChange }: P
         {hook !== null && !hook.native && (
           <div className="hint">原生钩子未加载（可能被安全软件拦截），当前仅统计本窗口内的输入</div>
         )}
-
-        <div className="panel-row">
-          <span className="panel-k">🔊 音量</span>
-          <span className="panel-v">
-            <input
-              type="range" min={0} max={100} value={Math.round(s.volume * 100)}
-              onChange={(e) => set({ volume: Number(e.target.value) / 100 })}
-              style={{ width: 80 }}
-            />
-            <span style={{ display: 'inline-block', width: 36, textAlign: 'right' }}>{Math.round(s.volume * 100)}</span>
-          </span>
-        </div>
       </div>
       <div className="panel-divider" />
       <div className="panel-actions">

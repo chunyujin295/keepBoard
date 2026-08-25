@@ -1,7 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import type { Settings, ThemeId, DailyStats, WeeklyStats } from './types'
-
-export type ThemeList = { id: ThemeId; label: string }[]
+import type { Settings, DailyStats, WeeklyStats } from './types'
 
 const api = {
   getTaskbar: () => ipcRenderer.invoke('win:get-taskbar'),
@@ -18,9 +16,6 @@ const api = {
   cycleOpacity: (): Promise<number | undefined> => ipcRenderer.invoke('win:cycle-opacity'),
   quitApp: () => ipcRenderer.send('app:quit'),
 
-  chooseCustomPet: (): Promise<boolean> => ipcRenderer.invoke('custom:choose'),
-  clearCustomPet: (): Promise<boolean> => ipcRenderer.invoke('custom:clear'),
-  getCustomPetData: (): Promise<{ url: string; stamp: string } | null> => ipcRenderer.invoke('custom:get-data'),
 
   getSavedBox: (key: string): Promise<{ x: number; y: number; w: number; h: number } | null> =>
     ipcRenderer.invoke('bounds:get', key),
@@ -35,7 +30,6 @@ const api = {
     return () => ipcRenderer.off('settings:update', h)
   },
 
-  listThemes: (): Promise<ThemeList> => ipcRenderer.invoke('themes:list'),
   getHookStatus: (): Promise<{ native: boolean; events: number }> => ipcRenderer.invoke('hooks:status'),
   getSizeLog: (): Promise<string[]> => ipcRenderer.invoke('debug:size-log'),
   getAppVersion: (): Promise<string> => ipcRenderer.invoke('app:version'),

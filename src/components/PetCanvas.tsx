@@ -1,84 +1,29 @@
-import { useEffect, useRef, useState } from 'react'
-import { drawCustomSprite, PetFrame, PET_CANVAS_W, PET_CANVAS_H } from '@/lib/pets'
-import type { ThemeId } from '@/lib/types'
-import piranha_open from '@/assets/pets/hd/piranha_idle_open.png'
-import piranha_blink from '@/assets/pets/hd/piranha_idle_blink.png'
-import cactus_open from '@/assets/pets/hd/cactus_idle_open.png'
-import cactus_blink from '@/assets/pets/hd/cactus_idle_blink.png'
-import slime_open from '@/assets/pets/hd/slime_idle_open.png'
-import slime_blink from '@/assets/pets/hd/slime_idle_blink.png'
-import cat_open from '@/assets/pets/hd/cat_idle_open.png'
-import cat_blink from '@/assets/pets/hd/cat_idle_blink.png'
-import mushroom_open from '@/assets/pets/hd/mushroom_idle_open.png'
-import mushroom_blink from '@/assets/pets/hd/mushroom_idle_blink.png'
-import ghost_open from '@/assets/pets/hd/ghost_idle_open.png'
-import ghost_blink from '@/assets/pets/hd/ghost_idle_blink.png'
-import dino_open from '@/assets/pets/hd/dino_idle_open.png'
-import dino_blink from '@/assets/pets/hd/dino_idle_blink.png'
-import robot_open from '@/assets/pets/hd/robot_idle_open.png'
-import robot_blink from '@/assets/pets/hd/robot_idle_blink.png'
-import pumpkin_open from '@/assets/pets/hd/pumpkin_idle_open.png'
-import pumpkin_blink from '@/assets/pets/hd/pumpkin_idle_blink.png'
-import penguin_open from '@/assets/pets/hd/penguin_idle_open.png'
-import penguin_blink from '@/assets/pets/hd/penguin_idle_blink.png'
-import alien_open from '@/assets/pets/hd/alien_idle_open.png'
-import alien_blink from '@/assets/pets/hd/alien_idle_blink.png'
-import fox_open from '@/assets/pets/hd/fox_idle_open.png'
-import fox_blink from '@/assets/pets/hd/fox_idle_blink.png'
-
-const FRAMES: Record<string, { open: string; blink: string }> = {
-  piranha: { open: piranha_open, blink: piranha_blink },
-  cactus: { open: cactus_open, blink: cactus_blink },
-  slime: { open: slime_open, blink: slime_blink },
-  cat: { open: cat_open, blink: cat_blink },
-  mushroom: { open: mushroom_open, blink: mushroom_blink },
-  ghost: { open: ghost_open, blink: ghost_blink },
-  dino: { open: dino_open, blink: dino_blink },
-  robot: { open: robot_open, blink: robot_blink },
-  pumpkin: { open: pumpkin_open, blink: pumpkin_blink },
-  penguin: { open: penguin_open, blink: penguin_blink },
-  alien: { open: alien_open, blink: alien_blink },
-  fox: { open: fox_open, blink: fox_blink }
-}
-
-interface PetFrames {
-  open: HTMLImageElement
-  blink: HTMLImageElement
-}
-
-const FRAME_CACHE = new Map<string, PetFrames>()
-
-function loadFrames(pet: string): Promise<PetFrames | null> {
-  const cached = FRAME_CACHE.get(pet)
-  if (cached) return Promise.resolve(cached)
-  const pair = FRAMES[pet]
-  if (!pair) return Promise.resolve(null)
-  const load = (src: string) => new Promise<HTMLImageElement>((res, rej) => {
-    const im = new Image()
-    im.onload = () => res(im)
-    im.onerror = rej
-    im.src = src
-  })
-  return Promise.all([load(pair.open), load(pair.blink)]).then(([open, blink]) => {
-    const pack: PetFrames = { open, blink }
-    FRAME_CACHE.set(pet, pack)
-    return pack
-  }).catch(() => null)
-}
-
-const DRAWERS: Partial<Record<ThemeId, string>> = {
-  piranha: 'piranha', cactus: 'cactus', slime: 'slime', cat: 'cat',
-  mushroom: 'mushroom', ghost: 'ghost', dino: 'dino', robot: 'robot',
-  pumpkin: 'pumpkin', penguin: 'penguin', alien: 'alien', fox: 'fox'
-}
+import { useEffect, useRef } from 'react'
 
 interface Props {
-  theme: ThemeId
-  /** True while panels/masks cover the window �?disables click-through logic */
+  /** window edge length in px (square window) */
+  size: number
+  /** True while panels/masks cover the window — disables click-through logic */
   overlayActive?: boolean
-  /** Filename of the uploaded custom sprite (reload trigger) */
-  customFile?: string
 }
+
+const CHARS = '.,-~:;=!*#$@'
+
+/** dark-tone rainbow: 16 steps, hue rotates, low lightness */
+function hslCss(h: number, s: number, l: number): string {
+  const a = s * Math.min(l, 1 - l)
+  const f = (n: number) => {
+    const k = (n + h / 30) % 12
+    return l - a * Math.max(-1, Math.min(k - 3, Math.min(9 - k, 1)))
+  }
+  const r = Math.round(f(0) * 255)
+  const g = Math.round(f(8) * 255)
+  const b = Math.round(f(4) * 255)
+  return `rgb(${r},${g},${b})`
+}
+const RAINBOW = Array.from({ length: 16 }, (_, i) => hslCss(i * 22.5, 0.72, 0.30 + (i % 2) * 0.045))
+
+const R1 = 1, R2 = 2, K2 = 5
 
 interface DragState {
   startX: number
@@ -88,85 +33,26 @@ interface DragState {
   lastSent: number
 }
 
-// Padding around the measured art bounding box so animations don't get clipped
-const PAD_L = 5
-const PAD_R = 7
-const PAD_T = 12
-const PAD_B = 3
-
-// Neutral pose for extent measurement
-const MEASURE_FRAME: PetFrame = {
-  neckExtend: 0.6,
-  mouthOpen: 0.35,
-  eyeClosed: 0,
-  leafSway: 0.7,
-  shake: 0
-}
-
-export default function PetCanvas({ theme, overlayActive, customFile }: Props) {
+export default function PetCanvas({ size, overlayActive }: Props) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
-  const rafRef = useRef<number>(0)
-  const startTime = useRef<number>(performance.now())
-  const biteUntilRef = useRef<number>(0)
-  const extendUntilRef = useRef<number>(0)
-  const frenzyUntilRef = useRef<number>(0)
-  const blinkUntilRef = useRef<number>(performance.now() + 4000)
-  const nextBlinkRef = useRef<number>(performance.now() + 4000)
-  const lastKeyTsRef = useRef<number>(0)
-  const comboCountRef = useRef<number>(0)
+  const rafRef = useRef(0)
+  const velA = useRef(0.045)
+  const velB = useRef(0.02)
+  const wob = useRef(0)
+  const wp1 = useRef(Math.random() * 6.28)
+  const wp2 = useRef(Math.random() * 6.28)
   const dragRef = useRef<DragState | null>(null)
-  const ignoreMouseRef = useRef<boolean>(false)
-  const overlayRef = useRef<boolean>(!!overlayActive)
-  const customImgRef = useRef<HTMLImageElement | null>(null)
-  const framesRef = useRef<PetFrames | null>(null)
-  const [offset, setOffset] = useState<{ x: number; y: number }>({ x: 0, y: 0 })
-  const [artReady, setArtReady] = useState(0)
+  const ignoreMouseRef = useRef(false)
+  const overlayRef = useRef(!!overlayActive)
 
-  // ---------------- asset loading ----------------
-  useEffect(() => {
-    let alive = true
-    if (theme === 'custom') {
-      window.keepboard?.getCustomPetData?.().then((d: { url: string; stamp: string } | null) => {
-        if (!alive) return
-        if (!d || !d.url) {
-          customImgRef.current = null
-          setArtReady((v) => v + 1)
-          return
-        }
-        const im = new Image()
-        im.onload = () => {
-          if (!alive) return
-          customImgRef.current = im
-          setArtReady((v) => v + 1)
-        }
-        im.src = d.url
-      }).catch(() => { })
-      return () => { alive = false }
+  const triggerKick = (s: number) => {
+    velA.current = Math.min(0.95, velA.current + (0.10 + Math.random() * 0.22) * s)
+    velB.current = Math.max(-0.7, Math.min(0.7, velB.current + (Math.random() - 0.5) * 0.38 * s))
+    wob.current = Math.min(1.4, wob.current + (0.18 + Math.random() * 0.24) * s)
+    if (Math.random() < 0.4) {
+      wp1.current = Math.random() * 6.28
+      wp2.current = Math.random() * 6.28
     }
-    const pet = DRAWERS[theme]
-    if (!pet) return
-    loadFrames(pet).then((pack) => {
-      if (!alive) return
-      framesRef.current = pack
-      setArtReady((v) => v + 1)
-    })
-    return () => { alive = false }
-  }, [theme, customFile])
-
-  const triggerBite = (intensity = 1) => {
-    const now = performance.now()
-    biteUntilRef.current = now + 320 * intensity
-    extendUntilRef.current = now + 280 * intensity
-    if (now - lastKeyTsRef.current < 180) {
-      comboCountRef.current++
-      if (comboCountRef.current > 5) frenzyUntilRef.current = now + 900
-    } else comboCountRef.current = 1
-    lastKeyTsRef.current = now
-  }
-
-  const triggerBlink = () => {
-    const now = performance.now()
-    if (now >= blinkUntilRef.current - 50) blinkUntilRef.current = now + 220
   }
 
   // ---------------- pixel-perfect mouse pass-through ----------------
@@ -190,7 +76,7 @@ export default function PetCanvas({ theme, overlayActive, customFile }: Props) {
       const r = canvas.getBoundingClientRect()
       const lx = Math.floor(e.clientX - r.left)
       const ly = Math.floor(e.clientY - r.top)
-      if (lx < 0 || ly < 0 || lx >= PET_CANVAS_W || ly >= PET_CANVAS_H) return
+      if (lx < 0 || ly < 0 || lx >= size || ly >= size) return
       const dpr = Math.max(1, Math.min(window.devicePixelRatio || 1, 2))
       const px = canvas.getContext('2d', { willReadFrequently: true })!.getImageData(lx * dpr, ly * dpr, 1, 1).data[3]
       applyIgnore(px < 16)
@@ -208,12 +94,12 @@ export default function PetCanvas({ theme, overlayActive, customFile }: Props) {
       window.keepboard?.setIgnoreMouseEvents?.(false)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [size])
 
-  // ---------------- dragging (manual IPC; CSS drag regions swallow right-clicks)
+  // ---------------- dragging ----------------
   const startDrag = (e: React.MouseEvent) => {
     if (e.button !== 0 || dragRef.current) return
-    triggerBlink()
+    triggerKick(0.5)
     window.keepboard?.reportWebClick?.(0)
     const sx = e.screenX
     const sy = e.screenY
@@ -243,115 +129,13 @@ export default function PetCanvas({ theme, overlayActive, customFile }: Props) {
     }).catch(() => { })
   }
 
-  // ---------------- render loop ----------------
+  // ---------------- global input -> spin impulses ----------------
   useEffect(() => {
-    const canvas = canvasRef.current
-    if (!canvas) return
-    const dpr = Math.max(1, Math.min(window.devicePixelRatio || 1, 2))
-    canvas.width = PET_CANVAS_W * dpr
-    canvas.height = PET_CANVAS_H * dpr
-    canvas.style.width = PET_CANVAS_W + 'px'
-    canvas.style.height = PET_CANVAS_H + 'px'
-    const ctx = canvas.getContext('2d', { willReadFrequently: true })!
-    ctx.imageSmoothingEnabled = false
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
-
-    const isCustom = theme === 'custom'
-    const frames = framesRef.current
-
-    const drawer = (c: CanvasRenderingContext2D, f: PetFrame) => {
-      if (isCustom) {
-        drawCustomSprite(c, f, customImgRef.current)
-        return
-      }
-      if (!frames) return
-      const blinking = f.eyeClosed > 0.5
-      const img = blinking ? frames.blink : frames.open
-      const scale = Math.min((PET_CANVAS_H * 0.82) / 128, (PET_CANVAS_W * 0.76) / 128)
-      const w = 128 * scale
-      const h = 128 * scale
-      const bob = Math.sin(f.leafSway * 1.5) * 2 - f.neckExtend * 4
-      const jitX = (Math.random() - 0.5) * 4 * f.shake
-      const jitY = (Math.random() - 0.5) * 4 * f.shake
-      const sq = Math.min(1, f.mouthOpen)
-      const sx = 1 + sq * 0.07
-      const sy = 1 - sq * 0.05
-      c.save()
-      c.imageSmoothingEnabled = false
-      c.translate(PET_CANVAS_W / 2 + jitX, PET_CANVAS_H - 30 + jitY)
-      c.scale(sx, sy)
-      c.drawImage(img, -w / 2, -h + bob, w, h)
-      c.restore()
-    }
-
-    const tick = () => {
-      const now = performance.now()
-      const t = (now - startTime.current) / 1000
-      ctx.clearRect(0, 0, PET_CANVAS_W, PET_CANVAS_H)
-      const breathe = 0.05 + 0.05 * Math.sin(t * 2)
-      const biteProgress = clamp01((biteUntilRef.current - now) / 320)
-      const extendProgress = clamp01((extendUntilRef.current - now) / 280)
-      const frenzyProgress = clamp01((frenzyUntilRef.current - now) / 900)
-      const blinkProgress = clamp01((blinkUntilRef.current - now) / 200)
-      if (now >= nextBlinkRef.current) {
-        blinkUntilRef.current = now + 180
-        nextBlinkRef.current = now + 3500 + Math.random() * 5000
-      }
-      const mouthOpen = frenzyProgress > 0
-        ? 0.3 + 0.7 * (0.5 + 0.5 * Math.sin(now / 40))
-        : biteProgress
-      const neckExtend = breathe + easeOutBack(1 - extendProgress) * 0.7 + frenzyProgress * 0.3
-      const frame: PetFrame = {
-        neckExtend,
-        mouthOpen,
-        eyeClosed: blinkProgress > 0.1 ? 1 - blinkProgress : 0,
-        leafSway: t * 1.5 + frenzyProgress * 6,
-        shake: frenzyProgress
-      }
-      drawer(ctx, frame)
-      rafRef.current = requestAnimationFrame(tick)
-    }
-    rafRef.current = requestAnimationFrame(tick)
-
-    // Shrink-wrap the OS window ONCE per art version: bounds are persisted in
-    // the store cache and reused �?never re-measured at runtime.
-    const ready = isCustom ? !!customImgRef.current : !!frames
-    if (ready) {
-      const key = `v5:${isCustom ? `custom:${customFile || ''}` : theme}`
-      let alive = true
-      window.keepboard?.getSavedBox?.(key).then((saved: { x: number; y: number; w: number; h: number } | null) => {
-        if (!alive) return
-        if (saved && saved.w > 0 && saved.h > 0) {
-          setOffset({ x: saved.x, y: saved.y })
-          window.keepboard?.setContentBox?.(saved)
-          return
-        }
-        try {
-          const box = measureArt(drawer)
-          // Sanity guard: a collapsed measurement (e.g. frame not fully drawn
-          // yet) must never shrink-wrap the window to garbage.
-          if (box.w < 60 || box.h < 60) return
-          void window.keepboard?.saveBox?.(key, box)
-          setOffset({ x: box.x, y: box.y })
-          window.keepboard?.setContentBox?.(box)
-        } catch { /* keep default window size */ }
-      }).catch(() => { })
-      return () => { alive = false; cancelAnimationFrame(rafRef.current) }
-    }
-
-    return () => cancelAnimationFrame(rafRef.current)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [theme, artReady])
-
-  // Drive animations from the MAIN PROCESS global input stream (native hook).
-  useEffect(() => {
-    const off = window.keepboard?.onInputEvent?.((e: { type: string; subtype?: string }) => {
+    const off = window.keepboard?.onInputEvent?.((e: { type: string }) => {
       if (!e) return
-      if (e.type === 'keypress') {
-        triggerBite(Math.random() * 0.4 + 0.8)
-      } else if (typeof e.type === 'string' && e.type.startsWith('mousedown')) {
-        triggerBlink()
-      }
+      if (e.type === 'keypress') triggerKick(1)
+      else if (e.type === 'wheel') triggerKick(0.35)
+      else if (typeof e.type === 'string' && e.type.startsWith('mousedown')) triggerKick(0.8)
     })
     return () => off?.()
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -364,58 +148,108 @@ export default function PetCanvas({ theme, overlayActive, customFile }: Props) {
     return () => window.removeEventListener('keydown', kd)
   }, [])
 
-  const style: React.CSSProperties = {
-    imageRendering: 'pixelated',
-    width: PET_CANVAS_W,
-    height: PET_CANVAS_H,
-    display: 'block',
-    cursor: 'grab',
-    userSelect: 'none',
-    touchAction: 'none',
-    marginLeft: -offset.x,
-    marginTop: -offset.y
-  }
+  // ---------------- donut render loop ----------------
+  useEffect(() => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+    const dpr = Math.max(1, Math.min(window.devicePixelRatio || 1, 2))
+    canvas.width = size * dpr
+    canvas.height = size * dpr
+    canvas.style.width = size + 'px'
+    canvas.style.height = size + 'px'
+    const ctx = canvas.getContext('2d')!
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+
+    const COLS = Math.max(24, Math.round(size / 5))
+    const CELL = size / COLS
+    const ROWS = COLS
+    const K1 = 0.235 * size
+    const cx = COLS / 2
+    const cy = ROWS / 2
+    const zbuf = new Float32Array(COLS * ROWS)
+    const cbuf = new Uint8Array(COLS * ROWS)
+
+    let A = 0.8
+    let B = 0.4
+    let colorShift = 0
+
+    const tick = () => {
+      const now = performance.now()
+      // decay toward idle spin; wobble fades
+      velA.current += (0.04 - velA.current) * 0.015
+      velB.current += (0.02 - velB.current) * 0.015
+      wob.current *= 0.986
+      // irregular rotation: base spin + damped precession wobble
+      A += velA.current + Math.sin(now * 0.0011 + wp1.current) * wob.current * 0.02
+      B += velB.current + Math.cos(now * 0.0008 + wp2.current) * wob.current * 0.016
+      colorShift += 0.0022 + velA.current * 0.02
+
+      const cosA = Math.cos(A), sinA = Math.sin(A)
+      const cosB = Math.cos(B), sinB = Math.sin(B)
+      zbuf.fill(0)
+
+      const chars: { x: number; y: number; ch: string; col: string }[] = []
+      let j = 0
+      for (let th = 0; th < 6.28; th += 0.07) {
+        const cosT = Math.cos(th), sinT = Math.sin(th)
+        const circlex = R2 + R1 * cosT
+        const circley = R1 * sinT
+        // dark-rainbow band flowing around the ring, tied to spin speed
+        const band = ((th / 6.28 + colorShift) % 1 + 1) % 1
+        const col = RAINBOW[Math.floor(band * 16) % 16]
+        for (let ph = 0; ph < 6.28; ph += 0.03) {
+          const cosP = Math.cos(ph), sinP = Math.sin(ph)
+          const x = circlex * (cosB * cosP + sinA * sinB * sinP) - circley * sinB * cosA
+          const y = circlex * (sinB * cosP - sinA * cosB * sinP) + circley * cosA * sinB
+          const z = K2 + cosA * circlex * sinP + circley * sinA
+          const ooz = 1 / z
+          const xp = Math.round(cx + K1 * ooz * x)
+          const yp = Math.round(cy - K1 * ooz * y)
+          if (xp < 0 || yp < 0 || xp >= COLS || yp >= ROWS) continue
+          const idx = yp * COLS + xp
+          if (ooz > zbuf[idx]) {
+            zbuf[idx] = ooz
+            const L = cosP * cosT * sinB - cosA * sinT * cosB - sinA * sinT + cosB * cosP * cosT
+            cbuf[idx] = L > 0 ? Math.min(CHARS.length - 1, (L * 8) | 0) : 0
+            chars.push({ x: xp, y: yp, ch: CHARS[cbuf[idx]], col })
+          }
+        }
+        j++
+        void j
+      }
+
+      ctx.clearRect(0, 0, size, size)
+      ctx.font = `${Math.max(9, Math.round(CELL + 3))}px Consolas, "Courier New", monospace`
+      ctx.textBaseline = 'top'
+      for (const c of chars) {
+        ctx.fillStyle = c.col
+        ctx.fillText(c.ch, c.x * CELL + 0.5, c.y * CELL)
+      }
+      rafRef.current = requestAnimationFrame(tick)
+    }
+    rafRef.current = requestAnimationFrame(tick)
+
+    // window content = full square; main-process delta math keeps origin
+    window.keepboard?.setContentBox?.({ x: 0, y: 0, w: size, h: size })
+
+    return () => cancelAnimationFrame(rafRef.current)
+  }, [size])
 
   return (
     <canvas
       ref={canvasRef}
-      style={style}
-      title="左键拖动 · 右键调透明度"
+      style={{
+        imageRendering: 'auto',
+        width: size,
+        height: size,
+        display: 'block',
+        cursor: 'grab',
+        userSelect: 'none',
+        touchAction: 'none'
+      }}
+      title="左键拖动 · 右键调透明度 · 打字让它转起来"
       onMouseDown={startDrag}
-      aria-label="keepBoard 像素宠物"
+      aria-label="keepBoard 3D 甜甜圈"
     />
   )
-}
-
-function clamp01(v: number) { return Math.max(0, Math.min(1, v)) }
-function easeOutBack(x: number): number {
-  const c1 = 1.70158
-  const c3 = c1 + 1
-  return 1 + c3 * Math.pow(x - 1, 3) + c1 * Math.pow(x - 1, 2)
-}
-
-function measureArt(drawer: (ctx: CanvasRenderingContext2D, f: PetFrame) => void): { x: number; y: number; w: number; h: number } {
-  const c = document.createElement('canvas')
-  c.width = PET_CANVAS_W
-  c.height = PET_CANVAS_H
-  const ctx = c.getContext('2d', { willReadFrequently: true })!
-  drawer(ctx, MEASURE_FRAME)
-  const img = ctx.getImageData(0, 0, PET_CANVAS_W, PET_CANVAS_H).data
-  let minX = PET_CANVAS_W, minY = PET_CANVAS_H, maxX = -1, maxY = -1
-  for (let y = 0; y < PET_CANVAS_H; y++) {
-    for (let x = 0; x < PET_CANVAS_W; x++) {
-      if (img[(y * PET_CANVAS_W + x) << 2 | 3] > 10) {
-        if (x < minX) minX = x
-        if (x > maxX) maxX = x
-        if (y < minY) minY = y
-        if (y > maxY) maxY = y
-      }
-    }
-  }
-  if (maxX < 0) return { x: 0, y: 0, w: PET_CANVAS_W, h: PET_CANVAS_H }
-  const bx = Math.max(0, minX - PAD_L)
-  const by = Math.max(0, minY - PAD_T)
-  const bw = Math.min(PET_CANVAS_W - bx, maxX - minX + 1 + PAD_L + PAD_R)
-  const bh = Math.min(PET_CANVAS_H - by, maxY - minY + 1 + PAD_T + PAD_B)
-  return { x: bx, y: by, w: bw, h: bh }
 }
