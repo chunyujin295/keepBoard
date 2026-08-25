@@ -1,0 +1,266 @@
+{
+  "size": 32,
+  "pets": {
+    "piranha": {
+      "frames": [
+        "piranha_idle_open.png",
+        "piranha_idle_blink.png"
+      ],
+      "eyeL": null,
+      "eyeR": null,
+      "mouth": [
+        1,
+        9,
+        18
+      ]
+    },
+    "cactus": {
+      "frames": [
+        "cactus_idle_open.png",
+        "cactus_idle_blink.png"
+      ],
+      "eyeL": [
+        7,
+        5,
+        2,
+        2
+      ],
+      "eyeR": [
+        12,
+        5,
+        2,
+        2
+      ],
+      "mouth": [
+        10,
+        8,
+        4
+      ]
+    },
+    "slime": {
+      "frames": [
+        "slime_idle_open.png",
+        "slime_idle_blink.png"
+      ],
+      "eyeL": [
+        4,
+        9,
+        3,
+        2
+      ],
+      "eyeR": [
+        15,
+        9,
+        3,
+        2
+      ],
+      "mouth": [
+        9,
+        13,
+        5
+      ]
+    },
+    "cat": {
+      "frames": [
+        "cat_idle_open.png",
+        "cat_idle_blink.png"
+      ],
+      "eyeL": [
+        5,
+        8,
+        3,
+        3
+      ],
+      "eyeR": [
+        16,
+        8,
+        3,
+        3
+      ],
+      "mouth": [
+        12,
+        12,
+        3
+      ]
+    },
+    "mushroom": {
+      "frames": [
+        "mushroom_idle_open.png",
+        "mushroom_idle_blink.png"
+      ],
+      "eyeL": [
+        5,
+        12,
+        3,
+        3
+      ],
+      "eyeR": [
+        12,
+        12,
+        3,
+        3
+      ],
+      "mouth": [
+        9,
+        16,
+        3
+      ]
+    },
+    "ghost": {
+      "frames": [
+        "ghost_idle_open.png",
+        "ghost_idle_blink.png"
+      ],
+      "eyeL": [
+        4,
+        7,
+        4,
+        3
+      ],
+      "eyeR": [
+        12,
+        7,
+        4,
+        3
+      ],
+      "mouth": [
+        9,
+        12,
+        3
+      ]
+    },
+    "dino": {
+      "frames": [
+        "dino_idle_open.png",
+        "dino_idle_blink.png"
+      ],
+      "eyeL": null,
+      "eyeR": [
+        7,
+        2,
+        2,
+        2
+      ],
+      "mouth": [
+        8,
+        7,
+        6
+      ]
+    },
+    "robot": {
+      "frames": [
+        "robot_idle_open.png",
+        "robot_idle_blink.png"
+      ],
+      "eyeL": [
+        8,
+        8,
+        4,
+        3
+      ],
+      "eyeR": [
+        14,
+        8,
+        4,
+        3
+      ],
+      "mouth": [
+        10,
+        13,
+        6
+      ]
+    },
+    "pumpkin": {
+      "frames": [
+        "pumpkin_idle_open.png",
+        "pumpkin_idle_blink.png"
+      ],
+      "eyeL": [
+        7,
+        13,
+        4,
+        2
+      ],
+      "eyeR": [
+        18,
+        13,
+        4,
+        2
+      ],
+      "mouth": [
+        7,
+        16,
+        13
+      ]
+    },
+    "penguin": {
+      "frames": [
+        "penguin_idle_open.png",
+        "penguin_idle_blink.png"
+      ],
+      "eyeL": [
+        6,
+        6,
+        3,
+        3
+      ],
+      "eyeR": [
+        12,
+        6,
+        3,
+        3
+      ],
+      "mouth": [
+        9,
+        8,
+        4
+      ]
+    },
+    "alien": {
+      "frames": [
+        "alien_idle_open.png",
+        "alien_idle_blink.png"
+      ],
+      "eyeL": [
+        8,
+        8,
+        2,
+        2
+      ],
+      "eyeR": [
+        16,
+        8,
+        2,
+        2
+      ],
+      "mouth": [
+        8,
+        14,
+        8
+      ]
+    },
+    "fox": {
+      "frames": [
+        "fox_idle_open.png",
+        "fox_idle_blink.png"
+      ],
+      "eyeL": [
+        4,
+        9,
+        3,
+        3
+      ],
+      "eyeR": [
+        15,
+        9,
+        3,
+        3
+      ],
+      "mouth": [
+        10,
+        13,
+        3
+      ]
+    }
+  }
+}

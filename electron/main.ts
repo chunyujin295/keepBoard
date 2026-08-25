@@ -17,6 +17,9 @@ let winMgr: WindowManager | null = null
 let tray: Tray | null = null
 let store: AppStore | null = null
 let hooker: GlobalHooker | null = null
+/** True while the user is dragging the pet — autoDock must stay suspended
+ *  so slow drags don't get yanked back to the taskbar mid-drag. */
+let dragging = false
 
 const isDev = process.env.NODE_ENV === 'development'
 const WINDOW_SIZE = { width: 220, height: 240 }
@@ -146,7 +149,8 @@ function createWindow() {
 
   let moveTimer: NodeJS.Timeout | null = null
   mainWindow.on('move', () => {
-    if (!store?.getSettings().autoDock) return
+    // Never fight the user's cursor: docking is suspended while dragging.
+    if (dragging || !store?.getSettings().autoDock) return
     if (moveTimer) clearTimeout(moveTimer)
     moveTimer = setTimeout(() => winMgr?.dockToTaskbar(), 150)
   })
@@ -161,7 +165,7 @@ function createWindow() {
     const pd = screen.getPrimaryDisplay()
     const tb = detectTaskbar(pd.bounds, pd.workArea)
     winMgr?.updateTaskbar(tb)
-    if (store?.getSettings().autoDock) winMgr?.dockToTaskbar()
+    if (!dragging && store?.getSettings().autoDock) winMgr?.dockToTaskbar()
   })
 }
 
@@ -305,6 +309,12 @@ function registerIpc() {
   ipcMain.on('win:drag-to', (_e, x: number, y: number) => {
     if (!mainWindow || typeof x !== 'number' || typeof y !== 'number') return
     mainWindow.setPosition(Math.round(x), Math.round(y))
+  })
+  // Drag lifecycle: suspend autoDock while dragging, snap once on release.
+  ipcMain.on('win:drag-start', () => { dragging = true })
+  ipcMain.on('win:drag-end', () => {
+    dragging = false
+    if (store?.getSettings().autoDock) setTimeout(() => winMgr?.dockToTaskbar(), 60)
   })
   // Shrink/grow the pet window to wrap the theme art.
   // The canvas is CSS-shifted by -offset, so buffer point P sits at screen

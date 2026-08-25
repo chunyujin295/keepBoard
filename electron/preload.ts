@@ -9,6 +9,8 @@ const api = {
   getWindowPos: (): Promise<{ x: number; y: number; width: number; height: number } | null> =>
     ipcRenderer.invoke('win:get-pos'),
   dragWindowTo: (x: number, y: number): void => ipcRenderer.send('win:drag-to', x, y),
+  notifyDragStart: (): void => ipcRenderer.send('win:drag-start'),
+  notifyDragEnd: (): void => ipcRenderer.send('win:drag-end'),
   setContentBox: (box: { x: number; y: number; w: number; h: number }): void =>
     ipcRenderer.send('win:set-content-box', box),
   setIgnoreMouseEvents: (ignore: boolean, options?: { forward: boolean }) =>
