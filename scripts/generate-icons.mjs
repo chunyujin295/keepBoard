@@ -132,9 +132,15 @@ writePng('icon-48.png', 48)
 writePng('icon-64.png', 64)
 writePng('icon-128.png', 128)
 writePng('icon-256.png', 256)
-writePng('icon.png', 512)
+const buf512 = writePng('icon.png', 512)
 // keep an extra copy so tray can find it
 fs.copyFileSync(path.join(BUILD_DIR, 'icon.png'), path.join(BUILD_DIR, 'icon-512.png'))
+
+// Committed copy for README display (build/ is gitignored)
+const readmeDir = path.join(ROOT, 'docs', 'img')
+fs.mkdirSync(readmeDir, { recursive: true })
+fs.writeFileSync(path.join(readmeDir, 'icon.png'), buf512)
+console.log(`  wrote ${path.relative(ROOT, path.join(readmeDir, 'icon.png'))} (README)`)
 
 // ---- Build multi-size ICO ----
 const icoSizes = [16, 32, 48, 64, 128, 256]

@@ -1,5 +1,9 @@
 # keepBoard
 
+<p align="center">
+  <img src="./docs/img/icon.png" alt="keepBoard icon" width="180">
+</p>
+
 像素风 Windows 桌面宠物 + 键鼠/屏幕时间统计工具。一只会咬人的食人花蹲在你的任务栏旁，你每敲一下键盘、点一下鼠标，它都会张嘴回应——同时默默记录你的每一次输入。
 
 基于 **Electron + React + TypeScript + Canvas** 构建。
