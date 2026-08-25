@@ -1,5 +1,6 @@
 import { BrowserWindow, screen } from 'electron'
 import { TaskbarInfo, TaskbarEdge } from './taskbar'
+import { logSize, rectsClose } from './sizeLog'
 
 export class WindowManager {
   private win: BrowserWindow
@@ -65,12 +66,17 @@ export class WindowManager {
         break
     }
 
-    this.win.setBounds({
+    const next = {
       x: Math.round(targetX),
       y: Math.round(targetY),
       width,
       height
-    })
+    }
+    // Dedupe: identical target = no-op. Prevents feedback loops such as the
+    // Windows auto-hide taskbar (reveal -> metrics-changed -> dock -> move...).
+    if (rectsClose(next, cur)) return
+    this.win.setBounds(next)
+    logSize('dock', next)
   }
 
   private refreshTaskbar(d: { bounds: import('electron').Rectangle; workArea: import('electron').Rectangle }): TaskbarInfo {

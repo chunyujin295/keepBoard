@@ -10,6 +10,7 @@ import { GlobalHooker, classifyKey } from './hooks'
 import { buildTrayMenu, applyAutoStart, OPACITY_LEVELS, THEME_LIST } from './menu'
 import { DailyStats, Settings, ThemeId, WeeklyStats } from './types'
 import { todayKey, weeklyToCsv } from './statsUtils'
+import { logSize, rectsClose, getSizeLog } from './sizeLog'
 
 let mainWindow: BrowserWindow | null = null
 let winMgr: WindowManager | null = null
@@ -281,6 +282,7 @@ function registerIpc() {
   })
   ipcMain.handle('stats:recent-weeks', (_e, n = 4): WeeklyStats[] => store?.getLastNWeeks(n) ?? [])
   ipcMain.handle('hooks:status', () => ({ native: hooker?.nativeActive ?? false, events: hooker?.nativeEventCount ?? 0 }))
+  ipcMain.handle('debug:size-log', () => getSizeLog())
   ipcMain.handle('app:version', () => app.getVersion())
   ipcMain.handle('stats:export-week-csv', async (_e, offset = 0): Promise<string | null> => {
     if (!store || !mainWindow) return null
@@ -312,13 +314,17 @@ function registerIpc() {
   // Missing this subtraction caused cumulative drift ("self-growing window").
   ipcMain.on('win:set-content-box', (_e, box: { x: number; y: number; w: number; h: number }) => {
     if (!mainWindow || !box) return
-    const [cx, cy] = mainWindow.getPosition()
-    mainWindow.setBounds({
-      x: cx + Math.round(box.x - lastBox.x),
-      y: cy + Math.round(box.y - lastBox.y),
+    const cur = mainWindow.getBounds()
+    const next = {
+      x: cur.x + Math.round(box.x - lastBox.x),
+      y: cur.y + Math.round(box.y - lastBox.y),
       width: Math.max(40, Math.min(WINDOW_SIZE.width, Math.round(box.w))),
       height: Math.max(40, Math.min(WINDOW_SIZE.height, Math.round(box.h)))
-    })
+    }
+    // Dedupe gate: never touch the OS window when nothing actually changes.
+    if (rectsClose(next, cur)) return
+    mainWindow.setBounds(next)
+    logSize('content-box', next)
     lastBox = { ...box }
     // Re-snap to the taskbar with the NEW size (avoids races with the
     // debounced 'move' handler running against stale dimensions).

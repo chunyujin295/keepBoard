@@ -19,6 +19,7 @@ const OPACITY_STEPS = [1, 0.75, 0.5, 0.25]
 export default function SettingsPanel({ settings, themes, onClose, onChange }: Props) {
   const [local, setLocal] = useState<Settings | null>(settings)
   const [hook, setHook] = useState<{ native: boolean; events: number } | null>(null)
+  const [sizeLog, setSizeLog] = useState<string[]>([])
   const [version, setVersion] = useState('')
   useEffect(() => setLocal(settings), [settings])
   useEffect(() => {
@@ -26,6 +27,9 @@ export default function SettingsPanel({ settings, themes, onClose, onChange }: P
     const poll = () => {
       window.keepboard?.getHookStatus?.().then((s: { native: boolean; events: number } | undefined) => {
         if (alive && s) setHook(s)
+      }).catch(() => { })
+      window.keepboard?.getSizeLog?.().then((l: string[] | undefined) => {
+        if (alive && l) setSizeLog(l)
       }).catch(() => { })
     }
     poll()
@@ -129,6 +133,14 @@ export default function SettingsPanel({ settings, themes, onClose, onChange }: P
         <button className="pixel-btn small" onClick={onClose}>关闭</button>
       </div>
       {version && <div className="panel-meta" style={{ marginTop: 6, textAlign: 'center' }}>keepBoard v{version}</div>}
+      {sizeLog.length > 0 && (
+        <div style={{ marginTop: 4 }}>
+          <span className="hint">📐 尺寸日志（最近真实变更）</span>
+          {sizeLog.slice(0, 3).map((l, i) => (
+            <div key={i} className="hint" style={{ paddingLeft: 8 }}>{l}</div>
+          ))}
+        </div>
+      )}
     </div>
   )
 }

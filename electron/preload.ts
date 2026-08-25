@@ -35,6 +35,7 @@ const api = {
 
   listThemes: (): Promise<ThemeList> => ipcRenderer.invoke('themes:list'),
   getHookStatus: (): Promise<{ native: boolean; events: number }> => ipcRenderer.invoke('hooks:status'),
+  getSizeLog: (): Promise<string[]> => ipcRenderer.invoke('debug:size-log'),
   getAppVersion: (): Promise<string> => ipcRenderer.invoke('app:version'),
 
   getDaily: (): Promise<DailyStats> => ipcRenderer.invoke('stats:daily'),
