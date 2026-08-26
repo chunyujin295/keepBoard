@@ -9,8 +9,6 @@ const api = {
   dragWindowTo: (x: number, y: number): void => ipcRenderer.send('win:drag-to', x, y),
   notifyDragStart: (): void => ipcRenderer.send('win:drag-start'),
   notifyDragEnd: (): void => ipcRenderer.send('win:drag-end'),
-  setContentBox: (box: { x: number; y: number; w: number; h: number }): void =>
-    ipcRenderer.send('win:set-content-box', box),
   setIgnoreMouseEvents: (ignore: boolean, options?: { forward: boolean }) =>
     ipcRenderer.send('win:set-ignore-mouse-events', ignore, options),
   cycleOpacity: (): Promise<number | undefined> => ipcRenderer.invoke('win:cycle-opacity'),

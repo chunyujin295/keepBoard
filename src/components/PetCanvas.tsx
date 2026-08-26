@@ -263,9 +263,6 @@ export default function PetCanvas({ size, overlayActive, shape = 'donut' }: Prop
     }
     rafRef.current = requestAnimationFrame(tick)
 
-    // position canvas inside the window with BORDER padding
-    window.keepboard?.setContentBox?.({ x: BORDER, y: BORDER, w: size, h: size })
-
     return () => cancelAnimationFrame(rafRef.current)
   }, [size, shape])
 
@@ -275,8 +272,8 @@ export default function PetCanvas({ size, overlayActive, shape = 'donut' }: Prop
       height: size + BORDER * 2,
       padding: BORDER,
       boxSizing: 'border-box',
-      border: dragging ? '1.5px dashed rgba(255,255,255,0.5)' : '1.5px solid transparent',
-      background: dragging ? 'rgba(255,255,255,0.06)' : 'transparent',
+      border: dragging ? '1.5px dashed rgba(100,160,255,0.7)' : '1.5px solid transparent',
+      background: dragging ? 'rgba(60,120,220,0.18)' : 'transparent',
       transition: 'border-color 0.15s, background 0.15s',
       cursor: 'grab'
     }}>

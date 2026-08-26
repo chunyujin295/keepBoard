@@ -10,7 +10,7 @@ import { GlobalHooker, classifyKey } from './hooks'
 import { buildTrayMenu, applyAutoStart, OPACITY_LEVELS } from './menu'
 import { DailyStats, Settings, WeeklyStats } from './types'
 import { todayKey, weeklyToCsv } from './statsUtils'
-import { logSize, rectsClose, getSizeLog } from './sizeLog'
+import { logSize, getSizeLog } from './sizeLog'
 
 let mainWindow: BrowserWindow | null = null
 let winMgr: WindowManager | null = null
@@ -27,10 +27,6 @@ const BORDER = 2
 function winSize(): number {
   return Math.max(140, Math.min(640, Math.round(store?.getSettings().windowSize || 220))) + BORDER * 2
 }
-// Content-box currently applied to the pet window (canvas buffer coordinates).
-// Used to move the window by the DELTA between boxes — without this the origin
-// drifts on every resize (the reported "window keeps growing" bug).
-let lastBox: { x: number; y: number; w: number; h: number } = { x: BORDER, y: BORDER, w: 220, h: 220 }
 // Wayland forbids global input hooks and programmatic window positioning —
 // degrade gracefully instead of attempting native capture.
 const isWayland = !!process.env.WAYLAND_DISPLAY || process.env.XDG_SESSION_TYPE === 'wayland'
@@ -107,8 +103,6 @@ function maybePushStats() {
 function createWindow() {
   const settings = store!.getSettings()
   const S = winSize()
-  const canvasSize = S - BORDER * 2
-  lastBox = { x: BORDER, y: BORDER, w: canvasSize, h: canvasSize }
   mainWindow = new BrowserWindow({
     width: winSize(),
     height: winSize(),
@@ -259,7 +253,6 @@ function applySettingsPatch(patch: Partial<Settings>): Settings | undefined {
       width: winW,
       height: winW
     })
-    lastBox = { x: BORDER, y: BORDER, w: canvasSize, h: canvasSize }
     if (store?.getSettings().autoDock) setTimeout(() => winMgr?.dockToTaskbar(), 80)
   }
   if (patch.autoDock) winMgr?.dockToTaskbar()
@@ -335,32 +328,8 @@ function registerIpc() {
     dragging = false
     if (store?.getSettings().autoDock) setTimeout(() => winMgr?.dockToTaskbar(), 60)
   })
-  // Shrink/grow the pet window to wrap the theme art.
-  // The canvas is CSS-shifted by -offset, so buffer point P sits at screen
-  // (winOrigin + P - lastBox). Keeping the art visually anchored therefore
-  // requires moving the origin by the DELTA between boxes:
-  //   newOrigin = curOrigin + (box.xy - lastBox.xy)
-  // Missing this subtraction caused cumulative drift ("self-growing window").
-  ipcMain.on('win:set-content-box', (_e, box: { x: number; y: number; w: number; h: number }) => {
-    if (!mainWindow || !box) return
-    const cur = mainWindow.getBounds()
-    const next = {
-      x: cur.x + Math.round(box.x - lastBox.x),
-      y: cur.y + Math.round(box.y - lastBox.y),
-      width: Math.max(40, Math.round(box.w)),
-      height: Math.max(40, Math.round(box.h))
-    }
-    // Dedupe gate: never touch the OS window when nothing actually changes.
-    if (rectsClose(next, cur)) return
-    mainWindow.setBounds(next)
-    logSize('content-box', next)
-    lastBox = { ...box }
-    // Re-snap to the taskbar with the NEW size (avoids races with the
-    // debounced 'move' handler running against stale dimensions).
-    if (store?.getSettings().autoDock) {
-      setTimeout(() => winMgr?.dockToTaskbar(), 80)
-    }
-  })
+  // Window size is set at creation and by applySettingsPatch — no need for
+  // a content-box handler since the canvas always sits at (BORDER, BORDER).
   ipcMain.on('win:set-ignore-mouse-events', (_e, ignore: boolean, options?: { forward?: boolean }) => {
     mainWindow?.setIgnoreMouseEvents(!!ignore, options ?? undefined)
   })
