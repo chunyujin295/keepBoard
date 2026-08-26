@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 interface Props {
   /** window edge length in px (square window) */
@@ -10,6 +10,8 @@ interface Props {
 }
 
 const CHARS = '.,-~:;=!*#$@'
+/** Must match BORDER in electron/main.ts */
+const BORDER = 8
 
 /** dark-tone rainbow: 16 steps, hue rotates, low lightness */
 function hslCss(h: number, s: number, l: number): string {
@@ -49,6 +51,7 @@ export default function PetCanvas({ size, overlayActive, shape = 'donut' }: Prop
   const dragRef = useRef<DragState | null>(null)
   const ignoreMouseRef = useRef(false)
   const overlayRef = useRef(!!overlayActive)
+  const [dragging, setDragging] = useState(false)
 
   const triggerKick = (s: number) => {
     // main spin ≈1°/event; secondary tumble ≈0.45°/event; both capped
@@ -107,6 +110,7 @@ export default function PetCanvas({ size, overlayActive, shape = 'donut' }: Prop
     window.keepboard?.getWindowPos?.().then((b: { x: number; y: number } | null) => {
       if (!b) return
       dragRef.current = { startX: sx, startY: sy, winX: b.x, winY: b.y, lastSent: 0 }
+      setDragging(true)
       window.keepboard?.notifyDragStart?.()
       const onMove = (ev: MouseEvent) => {
         const st = dragRef.current
@@ -121,6 +125,7 @@ export default function PetCanvas({ size, overlayActive, shape = 'donut' }: Prop
       }
       const onUp = () => {
         dragRef.current = null
+        setDragging(false)
         window.keepboard?.notifyDragEnd?.()
         window.removeEventListener('mousemove', onMove)
         window.removeEventListener('mouseup', onUp)
@@ -258,27 +263,38 @@ export default function PetCanvas({ size, overlayActive, shape = 'donut' }: Prop
     }
     rafRef.current = requestAnimationFrame(tick)
 
-    // window content = full square; main-process delta math keeps origin
-    window.keepboard?.setContentBox?.({ x: 0, y: 0, w: size, h: size })
+    // position canvas inside the window with BORDER padding
+    window.keepboard?.setContentBox?.({ x: BORDER, y: BORDER, w: size, h: size })
 
     return () => cancelAnimationFrame(rafRef.current)
   }, [size, shape])
 
   return (
-    <canvas
-      ref={canvasRef}
-      style={{
-        imageRendering: 'auto',
-        width: size,
-        height: size,
-        display: 'block',
-        cursor: 'grab',
-        userSelect: 'none',
-        touchAction: 'none'
-      }}
-      title="左键拖动 · 右键调透明度 · 打字让它转起来"
-      onMouseDown={startDrag}
-      aria-label="keepBoard 3D 甜甜圈"
-    />
+    <div style={{
+      width: size + BORDER * 2,
+      height: size + BORDER * 2,
+      padding: BORDER,
+      boxSizing: 'border-box',
+      border: dragging ? '1.5px dashed rgba(255,255,255,0.5)' : '1.5px solid transparent',
+      background: dragging ? 'rgba(255,255,255,0.06)' : 'transparent',
+      transition: 'border-color 0.15s, background 0.15s',
+      cursor: 'grab'
+    }}>
+      <canvas
+        ref={canvasRef}
+        style={{
+          imageRendering: 'auto',
+          width: size,
+          height: size,
+          display: 'block',
+          cursor: 'grab',
+          userSelect: 'none',
+          touchAction: 'none'
+        }}
+        title="左键拖动 · 打字让它转起来"
+        onMouseDown={startDrag}
+        aria-label="keepBoard 3D 甜甜圈"
+      />
+    </div>
   )
 }

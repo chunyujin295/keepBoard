@@ -22,13 +22,15 @@ let hooker: GlobalHooker | null = null
 let dragging = false
 
 const isDev = process.env.NODE_ENV === 'development'
+/** Padding between canvas edge and window border (包围盒边距) */
+const BORDER = 8
 function winSize(): number {
-  return Math.max(140, Math.min(640, Math.round(store?.getSettings().windowSize || 220)))
+  return Math.max(140, Math.min(640, Math.round(store?.getSettings().windowSize || 220))) + BORDER * 2
 }
 // Content-box currently applied to the pet window (canvas buffer coordinates).
 // Used to move the window by the DELTA between boxes — without this the origin
 // drifts on every resize (the reported "window keeps growing" bug).
-let lastBox: { x: number; y: number; w: number; h: number } = { x: 0, y: 0, w: 220, h: 220 }
+let lastBox: { x: number; y: number; w: number; h: number } = { x: BORDER, y: BORDER, w: 220, h: 220 }
 // Wayland forbids global input hooks and programmatic window positioning —
 // degrade gracefully instead of attempting native capture.
 const isWayland = !!process.env.WAYLAND_DISPLAY || process.env.XDG_SESSION_TYPE === 'wayland'
@@ -105,7 +107,8 @@ function maybePushStats() {
 function createWindow() {
   const settings = store!.getSettings()
   const S = winSize()
-  lastBox = { x: 0, y: 0, w: S, h: S }
+  const canvasSize = S - BORDER * 2
+  lastBox = { x: BORDER, y: BORDER, w: canvasSize, h: canvasSize }
   mainWindow = new BrowserWindow({
     width: winSize(),
     height: winSize(),
@@ -241,15 +244,16 @@ function applySettingsPatch(patch: Partial<Settings>): Settings | undefined {
     mainWindow.setOpacity(patch.opacity)
   }
   if (patch.windowSize !== undefined && mainWindow) {
-    const size = Math.max(140, Math.min(640, Math.round(patch.windowSize)))
+    const canvasSize = Math.max(140, Math.min(640, Math.round(patch.windowSize)))
+    const winW = canvasSize + BORDER * 2
     const cur = mainWindow.getBounds()
     mainWindow.setBounds({
-      x: Math.round(cur.x + (cur.width - size) / 2),
-      y: Math.round(cur.y + (cur.height - size) / 2),
-      width: size,
-      height: size
+      x: Math.round(cur.x + (cur.width - winW) / 2),
+      y: Math.round(cur.y + (cur.height - winW) / 2),
+      width: winW,
+      height: winW
     })
-    lastBox = { x: 0, y: 0, w: size, h: size }
+    lastBox = { x: BORDER, y: BORDER, w: canvasSize, h: canvasSize }
     if (store?.getSettings().autoDock) setTimeout(() => winMgr?.dockToTaskbar(), 80)
   }
   if (patch.autoDock) winMgr?.dockToTaskbar()

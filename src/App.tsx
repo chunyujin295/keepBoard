@@ -24,7 +24,6 @@ export default function App() {
 
   const openMenu = (e: React.MouseEvent) => {
     e.preventDefault()
-    window.keepboard?.showContextMenu?.()
   }
 
   const size = Math.max(140, Math.min(640, Math.round(settings?.windowSize || 220)))

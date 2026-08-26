@@ -3,6 +3,9 @@
 <p align="center">
   <img src="./docs/img/icon.png" alt="keepBoard icon" width="180">
 </p>
+<p align="center">
+  <img src="./docs/img/keepBoard.gif" alt="keepBoard gif" width="240">
+</p>
 
 字符画 3D 桌面宠物 + 键鼠/屏幕时间统计工具。一个旋转的 3D 甜甜圈（或球体）蹲在你的任务栏旁，你每敲一下键盘、点一下鼠标，它都会转起来——同时默默记录你的每一次输入。
 
