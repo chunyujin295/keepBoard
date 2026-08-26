@@ -1,5 +1,6 @@
 export interface Settings {
   windowSize: number
+  shape: 'donut' | 'sphere'
   autoStart: boolean
   autoDock: boolean
   alwaysOnTop: boolean
@@ -11,6 +12,7 @@ export interface Settings {
 
 export const DEFAULT_SETTINGS: Settings = {
   windowSize: 220,
+  shape: 'donut',
   autoStart: false,
   autoDock: true,
   alwaysOnTop: true,

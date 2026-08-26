@@ -1,5 +1,6 @@
 export interface Settings {
   windowSize: number
+  shape: 'donut' | 'sphere'
   autoStart: boolean
   autoDock: boolean
   alwaysOnTop: boolean

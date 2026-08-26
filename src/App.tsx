@@ -40,7 +40,7 @@ export default function App() {
 
   return (
     <div className="app-root" onContextMenu={openMenu}>
-      <PetCanvas size={size} overlayActive={panel !== null} />
+      <PetCanvas size={size} overlayActive={panel !== null} shape={settings?.shape ?? 'donut'} />
 
       {panel === 'daily' && (
         <div className="panel-mask" onClick={(e) => { e.stopPropagation(); setPanel(null) }}>

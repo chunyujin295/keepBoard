@@ -9,6 +9,10 @@ interface Props {
 
 const OPACITY_STEPS = [1, 0.75, 0.5, 0.25]
 const SIZE_STEPS = [160, 200, 240, 280, 320]
+const SHAPES: { id: 'donut' | 'sphere'; label: string }[] = [
+  { id: 'donut', label: '🍩 甜甜圈' },
+  { id: 'sphere', label: '🔵 球体' }
+]
 
 export default function SettingsPanel({ settings, onClose, onChange }: Props) {
   const [local, setLocal] = useState<Settings | null>(settings)
@@ -79,6 +83,21 @@ export default function SettingsPanel({ settings, onClose, onChange }: Props) {
         <div className="panel-row">
           <span className="panel-k dim">字符网格</span>
           <span className="panel-v">~{chars}×{chars}（自适应）</span>
+        </div>
+
+        <div className="panel-row big">
+          <span className="panel-k">🧊 形状</span>
+        </div>
+        <div className="panel-row">
+          <span className="seg" style={{ width: '100%', justifyContent: 'space-between' }}>
+            {SHAPES.map((sp) => (
+              <button
+                key={sp.id}
+                className={'seg-btn' + ((s.shape || 'donut') === sp.id ? ' active' : '')}
+                onClick={() => set({ shape: sp.id })}
+              >{sp.label}</button>
+            ))}
+          </span>
         </div>
 
         <div className="panel-row big">

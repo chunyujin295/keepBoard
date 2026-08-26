@@ -5,6 +5,8 @@ interface Props {
   size: number
   /** True while panels/masks cover the window — disables click-through logic */
   overlayActive?: boolean
+  /** 'donut' | 'sphere' */
+  shape?: 'donut' | 'sphere'
 }
 
 const CHARS = '.,-~:;=!*#$@'
@@ -24,10 +26,11 @@ function hslCss(h: number, s: number, l: number): string {
 const RAINBOW = Array.from({ length: 16 }, (_, i) => hslCss(i * 22.5, 0.72, 0.30 + (i % 2) * 0.045))
 
 const R1 = 1, R2 = 2, K2 = 5
-/** fixed camera tilt on X — gives the 3D look while spin stays single-axis */
-const TILT_X = 1.05
-/** angular velocity cap (deg/frame): 3.2 ≈ half a revolution per second */
-const MAX_VEL = 3.2
+/** secondary tumble axis base tilt */
+const TILT_BASE = 0.9
+/** angular velocity caps (deg/frame): main spin ≈ half rev/sec at cap */
+const MAX_VEL_B = 3.2
+const MAX_VEL_A = 1.7
 
 interface DragState {
   startX: number
@@ -37,18 +40,20 @@ interface DragState {
   lastSent: number
 }
 
-export default function PetCanvas({ size, overlayActive }: Props) {
+export default function PetCanvas({ size, overlayActive, shape = 'donut' }: Props) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const rafRef = useRef(0)
-  /** spin velocity, deg/frame — 0 at rest, kicked by input, capped at MAX_VEL */
-  const vel = useRef(0)
+  /** main spin + secondary tumble, deg/frame — 0 at rest, capped */
+  const velB = useRef(0)
+  const velA = useRef(0)
   const dragRef = useRef<DragState | null>(null)
   const ignoreMouseRef = useRef(false)
   const overlayRef = useRef(!!overlayActive)
 
   const triggerKick = (s: number) => {
-    // each event ≈ 1° of swing (scaled by input type); linear, capped
-    vel.current = Math.min(MAX_VEL, vel.current + 1.0 * s)
+    // main spin ≈1°/event; secondary tumble ≈0.45°/event; both capped
+    velB.current = Math.min(MAX_VEL_B, velB.current + 1.0 * s)
+    velA.current = Math.min(MAX_VEL_A, velA.current + 0.45 * s)
   }
 
   // ---------------- pixel-perfect mouse pass-through ----------------
@@ -156,62 +161,94 @@ export default function PetCanvas({ size, overlayActive }: Props) {
     const ctx = canvas.getContext('2d')!
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
 
-    const COLS = Math.max(24, Math.round(size / 5))
+    const COLS = Math.max(18, Math.round(size / 6.5))
     const CELL = size / COLS
     const ROWS = COLS
     const K1 = 0.235 * COLS
     const cx = COLS / 2
     const cy = ROWS / 2
     const zbuf = new Float32Array(COLS * ROWS)
-    const cbuf = new Uint8Array(COLS * ROWS)
 
+    let A = TILT_BASE
     let B = 0.4
     let colorShift = 0
 
     const tick = () => {
-      // linear spin: integrate velocity, exponential friction, static at rest
-      vel.current *= 0.94
-      if (vel.current < 0.02) vel.current = 0
-      B += (vel.current * Math.PI) / 180
-      colorShift += (vel.current / 180) * 0.5
+      // dual-axis spin: A tumbles, B main rotation; both kick + decay; static at rest
+      velB.current *= 0.94
+      velA.current *= 0.94
+      if (velB.current < 0.02) velB.current = 0
+      if (velA.current < 0.02) velA.current = 0
+      A += (velA.current * Math.PI) / 180
+      B += (velB.current * Math.PI) / 180
+      colorShift += (velB.current / 180) * 0.5
 
-    // fixed camera tilt (3D look) — spin happens on B only
-    const cosA = Math.cos(TILT_X), sinA = Math.sin(TILT_X)
-    const cosB = Math.cos(B), sinB = Math.sin(B)
+      const cosA = Math.cos(A), sinA = Math.sin(A)
+      const cosB = Math.cos(B), sinB = Math.sin(B)
       zbuf.fill(0)
 
       const chars: { x: number; y: number; ch: string; col: string }[] = []
-      let j = 0
-      for (let th = 0; th < 6.28; th += 0.07) {
-        const cosT = Math.cos(th), sinT = Math.sin(th)
-        const circlex = R2 + R1 * cosT
-        const circley = R1 * sinT
-        // dark-rainbow band flowing around the ring, tied to spin speed
-        const band = ((th / 6.28 + colorShift) % 1 + 1) % 1
-        const col = RAINBOW[Math.floor(band * 16) % 16]
-        for (let ph = 0; ph < 6.28; ph += 0.03) {
-          const cosP = Math.cos(ph), sinP = Math.sin(ph)
-          const x = circlex * (cosB * cosP + sinA * sinB * sinP) - circley * sinB * cosA
-          const y = circlex * (sinB * cosP - sinA * cosB * sinP) + circley * cosA * sinB
-          const z = K2 + cosA * circlex * sinP + circley * sinA
-          const ooz = 1 / z
-          const xp = Math.round(cx + K1 * ooz * x)
-          const yp = Math.round(cy - K1 * ooz * y)
-          if (xp < 0 || yp < 0 || xp >= COLS || yp >= ROWS) continue
-          const idx = yp * COLS + xp
-          if (ooz > zbuf[idx]) {
-            zbuf[idx] = ooz
-            const L = cosP * cosT * sinB - cosA * sinT * cosB - sinA * sinT + cosB * cosP * cosT
-            cbuf[idx] = L > 0 ? Math.min(CHARS.length - 1, (L * 8) | 0) : 0
-            chars.push({ x: xp, y: yp, ch: CHARS[cbuf[idx]], col })
+
+      if (shape === 'donut') {
+        for (let th = 0; th < 6.28; th += 0.07) {
+          const cosT = Math.cos(th), sinT = Math.sin(th)
+          const circlex = R2 + R1 * cosT
+          const circley = R1 * sinT
+          const band = ((th / 6.28 + colorShift) % 1 + 1) % 1
+          const col = RAINBOW[Math.floor(band * 16) % 16]
+          for (let ph = 0; ph < 6.28; ph += 0.04) {
+            const cosP = Math.cos(ph), sinP = Math.sin(ph)
+            const x = circlex * (cosB * cosP + sinA * sinB * sinP) - circley * sinB * cosA
+            const y = circlex * (sinB * cosP - sinA * cosB * sinP) + circley * cosA * sinB
+            const z = K2 + cosA * circlex * sinP + circley * sinA
+            const ooz = 1 / z
+            const xp = Math.round(cx + K1 * ooz * x)
+            const yp = Math.round(cy - K1 * ooz * y)
+            if (xp < 0 || yp < 0 || xp >= COLS || yp >= ROWS) continue
+            const idx = yp * COLS + xp
+            if (ooz > zbuf[idx]) {
+              zbuf[idx] = ooz
+              const L = cosP * cosT * sinB - cosA * sinT * cosB - sinA * sinT + cosB * cosP * cosT
+              chars.push({ x: xp, y: yp, ch: L > 0 ? CHARS[Math.min(CHARS.length - 1, (L * 8) | 0)] : ' ', col })
+            }
           }
         }
-        j++
-        void j
+      } else {
+        // sphere: rotate longitude with B for color flow, tilt with A for 3D
+        for (let lat = -1.35; lat < 1.35; lat += 0.10) {
+          const cLat = Math.cos(lat), sLat = Math.sin(lat)
+          for (let lon = 0; lon < 6.28; lon += 0.07) {
+            const cLon = Math.cos(lon), sLon = Math.sin(lon)
+            // surface point on unit sphere
+            const x0 = cLat * cLon
+            const y0 = sLat
+            const z0 = cLat * sLon
+            // rotate Y by B, then X by A
+            const xr = x0 * cosB + z0 * sinB
+            const zr1 = -x0 * sinB + z0 * cosB
+            const yr = y0 * cosA - zr1 * sinA
+            const zr = y0 * sinA + zr1 * cosA
+
+            const z = 2.2 + zr
+            const ooz = 1 / z
+            const xp = Math.round(cx + K1 * ooz * xr * 1.5)
+            const yp = Math.round(cy - K1 * ooz * yr * 1.5)
+            if (xp < 0 || yp < 0 || xp >= COLS || yp >= ROWS) continue
+            const idx = yp * COLS + xp
+            // lighting: dot(normal, light) — light from top-left-front
+            const L = -(xr * 0.45 + yr * 0.55 - zr * 0.7)
+            if (ooz > zbuf[idx] && L > 0) {
+              zbuf[idx] = ooz
+              const band = (((lon + B * 0.5) / 6.28) + colorShift) % 1
+              const col = RAINBOW[Math.floor(((band % 1) + 1) % 1 * 16) % 16]
+              chars.push({ x: xp, y: yp, ch: CHARS[Math.min(CHARS.length - 1, (L * 9) | 0)], col })
+            }
+          }
+        }
       }
 
       ctx.clearRect(0, 0, size, size)
-      ctx.font = `${Math.max(9, Math.round(CELL + 3))}px Consolas, "Courier New", monospace`
+      ctx.font = `${Math.max(10, Math.round(CELL + 4))}px Consolas, "Courier New", monospace`
       ctx.textBaseline = 'top'
       for (const c of chars) {
         ctx.fillStyle = c.col
@@ -225,7 +262,7 @@ export default function PetCanvas({ size, overlayActive }: Props) {
     window.keepboard?.setContentBox?.({ x: 0, y: 0, w: size, h: size })
 
     return () => cancelAnimationFrame(rafRef.current)
-  }, [size])
+  }, [size, shape])
 
   return (
     <canvas
