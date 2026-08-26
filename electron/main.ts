@@ -25,13 +25,11 @@ let dragEndTs = 0
 
 const isDev = process.env.NODE_ENV === 'development'
 /** Padding between canvas edge and window border (包围盒边距) */
-const BORDER = 2
+const BORDER = 0
 function winSize(): number {
   const raw = store?.getSettings().windowSize || 220
   const clamped = Math.max(140, Math.min(640, Math.round(raw)))
-  const final = clamped + BORDER * 2
-  console.log(`[keepBoard] winSize: raw=${raw} clamped=${clamped} border=${BORDER} final=${final}`)
-  return final
+  return clamped + BORDER * 2
 }
 // Wayland forbids global input hooks and programmatic window positioning —
 // degrade gracefully instead of attempting native capture.
@@ -109,10 +107,9 @@ function maybePushStats() {
 function createWindow() {
   const settings = store!.getSettings()
   const S = winSize()
-  console.log(`[keepBoard] createWindow: size=${S} settings.windowSize=${settings.windowSize}`)
   mainWindow = new BrowserWindow({
-    width: winSize(),
-    height: winSize(),
+    width: S,
+    height: S,
     frame: false,
     transparent: true,
     resizable: false,
@@ -132,6 +129,8 @@ function createWindow() {
       sandbox: false
     }
   })
+  mainWindow.setMinimumSize(S, S)
+  mainWindow.setMaximumSize(S, S)
 
   if (settings.alwaysOnTop) {
     mainWindow.setAlwaysOnTop(true, 'screen-saver')
@@ -156,12 +155,12 @@ function createWindow() {
 
   let moveTimer: NodeJS.Timeout | null = null
   mainWindow.on('move', () => {
-    // Never fight the user's cursor: docking is suspended while dragging.
-    // Also suppress for 300ms after drag-end to avoid double-dock drift.
     if (dragging || !store?.getSettings().autoDock) return
     if (Date.now() - dragEndTs < 300) return
     if (moveTimer) clearTimeout(moveTimer)
-    moveTimer = setTimeout(() => winMgr?.dockToTaskbar(), 150)
+    moveTimer = setTimeout(() => {
+      winMgr?.dockToTaskbar()
+    }, 150)
   })
 
   mainWindow.on('closed', () => {
@@ -255,13 +254,13 @@ function applySettingsPatch(patch: Partial<Settings>): Settings | undefined {
   if (patch.windowSize !== undefined && mainWindow) {
     const canvasSize = Math.max(140, Math.min(640, Math.round(patch.windowSize)))
     const winW = canvasSize + BORDER * 2
+    mainWindow.setMinimumSize(winW, winW)
+    mainWindow.setMaximumSize(winW, winW)
     const cur = mainWindow.getBounds()
-    mainWindow.setBounds({
-      x: Math.round(cur.x + (cur.width - winW) / 2),
-      y: Math.round(cur.y + (cur.height - winW) / 2),
-      width: winW,
-      height: winW
-    })
+    mainWindow.setPosition(
+      Math.round(cur.x + (cur.width - winW) / 2),
+      Math.round(cur.y + (cur.height - winW) / 2)
+    )
     if (store?.getSettings().autoDock) setTimeout(() => winMgr?.dockToTaskbar(), 80)
   }
   if (patch.autoDock) winMgr?.dockToTaskbar()
@@ -329,8 +328,10 @@ function registerIpc() {
   ipcMain.handle('win:get-pos', () => mainWindow?.getBounds() ?? null)
   ipcMain.on('win:drag-to', (_e, x: number, y: number) => {
     if (!mainWindow || typeof x !== 'number' || typeof y !== 'number') return
-    mainWindow.setPosition(Math.round(x), Math.round(y))
+    const [w, h] = mainWindow.getSize()
+    mainWindow.setBounds({ x: Math.round(x), y: Math.round(y), width: w, height: h })
   })
+
   // Drag lifecycle: suspend autoDock while dragging, snap once on release.
   ipcMain.on('win:drag-start', () => { dragging = true })
   ipcMain.on('win:drag-end', () => {

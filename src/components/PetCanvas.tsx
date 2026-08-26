@@ -10,8 +10,6 @@ interface Props {
 }
 
 const CHARS = '.,-~:;=!*#$@'
-/** Must match BORDER in electron/main.ts */
-const BORDER = 2
 
 /** dark-tone rainbow: 16 steps, hue rotates, low lightness */
 function hslCss(h: number, s: number, l: number): string {
@@ -158,18 +156,21 @@ export default function PetCanvas({ size, overlayActive, shape = 'donut' }: Prop
   useEffect(() => {
     const canvas = canvasRef.current
     if (!canvas) return
+    const w = window.innerWidth
+    const h = window.innerHeight
+    const sz = Math.min(w, h)
     const dpr = Math.max(1, Math.min(window.devicePixelRatio || 1, 2))
-    canvas.width = size * dpr
-    canvas.height = size * dpr
-    canvas.style.width = size + 'px'
-    canvas.style.height = size + 'px'
+    canvas.width = sz * dpr
+    canvas.height = sz * dpr
+    canvas.style.width = '100%'
+    canvas.style.height = '100%'
     const ctx = canvas.getContext('2d')!
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
 
-    const COLS = Math.max(20, Math.round(size / 4.5))
-    const CELL = size / COLS
+    const COLS = Math.max(20, Math.round(sz / 4.5))
+    const CELL = sz / COLS
     const ROWS = COLS
-    const K1 = 0.235 * COLS
+    const K1 = 0.345 * COLS
     const cx = COLS / 2
     const cy = ROWS / 2
     const zbuf = new Float32Array(COLS * ROWS)
@@ -264,13 +265,12 @@ export default function PetCanvas({ size, overlayActive, shape = 'donut' }: Prop
     rafRef.current = requestAnimationFrame(tick)
 
     return () => cancelAnimationFrame(rafRef.current)
-  }, [size, shape])
+  }, [shape])
 
   return (
     <div style={{
-      width: size + BORDER * 2,
-      height: size + BORDER * 2,
-      padding: BORDER,
+      width: '100%',
+      height: '100%',
       boxSizing: 'border-box',
       border: dragging ? '1.5px dashed rgba(100,160,255,0.7)' : '1.5px solid transparent',
       background: dragging ? 'rgba(60,120,220,0.18)' : 'transparent',
@@ -281,8 +281,8 @@ export default function PetCanvas({ size, overlayActive, shape = 'donut' }: Prop
         ref={canvasRef}
         style={{
           imageRendering: 'auto',
-          width: size,
-          height: size,
+          width: '100%',
+          height: '100%',
           display: 'block',
           cursor: 'grab',
           userSelect: 'none',

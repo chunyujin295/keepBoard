@@ -21,8 +21,6 @@ export class WindowManager {
   }
 
   dockToTaskbar() {
-    // Use LIVE bounds: the window is shrink-wrapped to the pet art per theme,
-    // so its size changes at runtime.
     const cur = this.win.getBounds()
     const width = cur.width
     const height = cur.height
@@ -72,9 +70,8 @@ export class WindowManager {
       width,
       height
     }
-    // Dedupe: identical target = no-op. Prevents feedback loops such as the
-    // Windows auto-hide taskbar (reveal -> metrics-changed -> dock -> move...).
-    if (rectsClose(next, cur)) return
+    console.log(`[keepBoard] dock: edge=${tgt.edge} cur={${cur.x},${cur.y},${cur.width}x${cur.height}} next={${next.x},${next.y},${next.width}x${next.height}}`)
+    if (rectsClose(next, cur)) { console.log('[keepBoard] dock: skip (same pos)'); return }
     this.win.setBounds(next)
     logSize('dock', next)
   }
