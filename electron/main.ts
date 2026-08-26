@@ -20,12 +20,18 @@ let hooker: GlobalHooker | null = null
 /** True while the user is dragging the pet — autoDock must stay suspended
  *  so slow drags don't get yanked back to the taskbar mid-drag. */
 let dragging = false
+/** Timestamp when drag ended — suppresses move-handler re-dock for 300ms. */
+let dragEndTs = 0
 
 const isDev = process.env.NODE_ENV === 'development'
 /** Padding between canvas edge and window border (包围盒边距) */
 const BORDER = 2
 function winSize(): number {
-  return Math.max(140, Math.min(640, Math.round(store?.getSettings().windowSize || 220))) + BORDER * 2
+  const raw = store?.getSettings().windowSize || 220
+  const clamped = Math.max(140, Math.min(640, Math.round(raw)))
+  const final = clamped + BORDER * 2
+  console.log(`[keepBoard] winSize: raw=${raw} clamped=${clamped} border=${BORDER} final=${final}`)
+  return final
 }
 // Wayland forbids global input hooks and programmatic window positioning —
 // degrade gracefully instead of attempting native capture.
@@ -103,6 +109,7 @@ function maybePushStats() {
 function createWindow() {
   const settings = store!.getSettings()
   const S = winSize()
+  console.log(`[keepBoard] createWindow: size=${S} settings.windowSize=${settings.windowSize}`)
   mainWindow = new BrowserWindow({
     width: winSize(),
     height: winSize(),
@@ -150,7 +157,9 @@ function createWindow() {
   let moveTimer: NodeJS.Timeout | null = null
   mainWindow.on('move', () => {
     // Never fight the user's cursor: docking is suspended while dragging.
+    // Also suppress for 300ms after drag-end to avoid double-dock drift.
     if (dragging || !store?.getSettings().autoDock) return
+    if (Date.now() - dragEndTs < 300) return
     if (moveTimer) clearTimeout(moveTimer)
     moveTimer = setTimeout(() => winMgr?.dockToTaskbar(), 150)
   })
@@ -326,6 +335,7 @@ function registerIpc() {
   ipcMain.on('win:drag-start', () => { dragging = true })
   ipcMain.on('win:drag-end', () => {
     dragging = false
+    dragEndTs = Date.now()
     if (store?.getSettings().autoDock) setTimeout(() => winMgr?.dockToTaskbar(), 60)
   })
   // Window size is set at creation and by applySettingsPatch — no need for
