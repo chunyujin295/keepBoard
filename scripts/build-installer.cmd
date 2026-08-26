@@ -15,22 +15,26 @@ if errorlevel 1 (
 )
 
 if not exist node_modules (
-    echo [1/4] Installing dependencies...
+    echo [1/5] Installing dependencies...
     call npm install
     if errorlevel 1 exit /b 1
 ) else (
-    echo [1/4] Dependencies OK.
+    echo [1/5] Dependencies OK.
 )
 
-echo [2/4] Cleaning ALL previous build outputs (dist / dist-electron / release / icons)...
+echo [2/5] Syncing version from scripts\version.txt ...
+call node scripts\sync-version.mjs
+if errorlevel 1 exit /b 1
+
+echo [3/5] Cleaning ALL previous build outputs (dist / dist-electron / release / icons)...
 call npm run clean
 if errorlevel 1 exit /b 1
 
-echo [3/4] Regenerating pixel icons + full build...
+echo [4/5] Regenerating icons + full build...
 call npm run prepackage
 if errorlevel 1 exit /b 1
 
-echo [4/4] Packaging with electron-builder ...
+echo [5/5] Packaging with electron-builder ...
 call npm run package
 if errorlevel 1 exit /b 1
 

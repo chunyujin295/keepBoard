@@ -15,19 +15,22 @@ if ! command -v node >/dev/null 2>&1; then
 fi
 
 if [ ! -d node_modules ]; then
-    echo "[1/4] Installing dependencies..."
+    echo "[1/5] Installing dependencies..."
     npm install
 else
-    echo "[1/4] Dependencies OK."
+    echo "[1/5] Dependencies OK."
 fi
 
-echo "[2/4] Cleaning ALL previous build outputs..."
+echo "[2/5] Syncing version from scripts/version.txt ..."
+node scripts/sync-version.mjs
+
+echo "[3/5] Cleaning ALL previous build outputs..."
 npm run clean
 
-echo "[3/4] Regenerating pixel icons + full build..."
+echo "[4/5] Regenerating icons + full build..."
 npm run prepackage
 
-echo "[4/4] Packaging with electron-builder (AppImage + deb) ..."
+echo "[5/5] Packaging with electron-builder (AppImage + deb) ..."
 npm run package:linux
 
 echo
