@@ -10,7 +10,6 @@ export interface MenuHandlers {
   onToggleOnTop: (next: boolean) => void
   onShowDaily: () => void
   onShowWeekly: () => void
-  onShowSettings: () => void
   onRedock: () => void
   onQuit: () => void
   onToggleAudio: (next: boolean) => void
@@ -61,7 +60,6 @@ export function buildTrayMenu(settings: Settings, h: MenuHandlers): Menu {
     },
     { label: '📌 立即重新吸附', click: () => h.onRedock() },
     { type: 'separator' },
-    { label: '⚙ 设置面板', click: () => h.onShowSettings() },
     {
       label: '🔖 打包版本',
       enabled: false,

@@ -1,5 +1,5 @@
 import {
-  app, BrowserWindow, dialog, ipcMain, screen, Tray, nativeImage, shell
+  app, BrowserWindow, dialog, ipcMain, screen, Tray, nativeImage, shell, Menu
 } from 'electron'
 import path from 'node:path'
 import fs from 'node:fs'
@@ -23,7 +23,7 @@ let dragging = false
 
 const isDev = process.env.NODE_ENV === 'development'
 function winSize(): number {
-  return Math.max(140, Math.min(320, Math.round(store?.getSettings().windowSize || 220)))
+  return Math.max(140, Math.min(640, Math.round(store?.getSettings().windowSize || 220)))
 }
 // Content-box currently applied to the pet window (canvas buffer coordinates).
 // Used to move the window by the DELTA between boxes — without this the origin
@@ -214,7 +214,6 @@ const menuHandlers = {
   },
   onShowDaily: () => { mainWindow?.webContents.send('ui:open-panel', 'daily') },
   onShowWeekly: () => { mainWindow?.webContents.send('ui:open-panel', 'weekly') },
-  onShowSettings: () => { mainWindow?.webContents.send('ui:open-panel', 'settings') },
   onRedock: () => winMgr?.dockToTaskbar(),
   onQuit: () => app.quit(),
   onToggleAudio: (next: boolean) => {
@@ -242,7 +241,7 @@ function applySettingsPatch(patch: Partial<Settings>): Settings | undefined {
     mainWindow.setOpacity(patch.opacity)
   }
   if (patch.windowSize !== undefined && mainWindow) {
-    const size = Math.max(140, Math.min(320, Math.round(patch.windowSize)))
+    const size = Math.max(140, Math.min(640, Math.round(patch.windowSize)))
     const cur = mainWindow.getBounds()
     mainWindow.setBounds({
       x: Math.round(cur.x + (cur.width - size) / 2),
@@ -366,8 +365,68 @@ function registerIpc() {
     return next
   })
 
-  // Custom user sprite management
-  const CUSTOM_EXTS = ['png', 'jpg', 'jpeg', 'webp', 'bmp', 'gif']
+  // Right-click context menu on the pet window
+  ipcMain.on('win:context-menu', () => {
+    if (!mainWindow || !store) return
+    const s = store.getSettings()
+    const curOpacity = s.opacity ?? 1
+    const curSize = s.windowSize || 220
+    const curShape = s.shape || 'donut'
+
+    const template: Electron.MenuItemConstructorOptions[] = [
+      {
+        label: '📊 今日统计',
+        click: () => mainWindow?.webContents.send('ui:open-panel', 'daily')
+      },
+      {
+        label: '📈 本周统计',
+        click: () => mainWindow?.webContents.send('ui:open-panel', 'weekly')
+      },
+      { type: 'separator' },
+      {
+        label: '🧊 形状',
+        submenu: [
+          { label: '🍩 甜甜圈', type: 'radio', checked: curShape === 'donut', click: () => applySettingsPatch({ shape: 'donut' }) },
+          { label: '🔵 球体', type: 'radio', checked: curShape === 'sphere', click: () => applySettingsPatch({ shape: 'sphere' }) }
+        ]
+      },
+      {
+        label: '📐 尺寸',
+        submenu: [180, 240, 320, 400, 480, 640].map((v) => ({
+          label: `${v}px`,
+          type: 'radio' as const,
+          checked: curSize === v,
+          click: () => applySettingsPatch({ windowSize: v })
+        }))
+      },
+      {
+        label: '🌗 不透明度',
+        submenu: OPACITY_LEVELS.map((v) => ({
+          label: `${Math.round(v * 100)}%`,
+          type: 'radio' as const,
+          checked: Math.abs(curOpacity - v) < 0.01,
+          click: () => applySettingsPatch({ opacity: v })
+        }))
+      },
+      { type: 'separator' },
+      {
+        label: s.alwaysOnTop ? '🔝 取消置顶' : '🔝 置顶窗口',
+        click: () => applySettingsPatch({ alwaysOnTop: !s.alwaysOnTop })
+      },
+      {
+        label: s.autoDock ? '🧲 取消吸附' : '🧲 自动吸附任务栏',
+        click: () => applySettingsPatch({ autoDock: !s.autoDock })
+      },
+      { type: 'separator' },
+      {
+        label: '❌ 退出',
+        click: () => app.quit()
+      }
+    ]
+
+    const menu = Menu.buildFromTemplate(template)
+    menu.popup({ window: mainWindow })
+  })
 
   ipcMain.handle('app:open-path', (_e, p: string) => {
     if (!store) return

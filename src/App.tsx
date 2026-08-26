@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react'
 import PetCanvas from '@/components/PetCanvas'
 import DailyPanel from '@/components/DailyPanel'
 import WeeklyPanel from '@/components/WeeklyPanel'
-import SettingsPanel from '@/components/SettingsPanel'
 import type { DailyStats, PanelId, Settings, WeeklyStats } from '@/lib/types'
 
 export default function App() {
@@ -23,20 +22,12 @@ export default function App() {
     return () => { offs.forEach(off => off?.()) }
   }, [])
 
-  const changeSettings = async (patch: Partial<Settings>) => {
-    try {
-      const s = await window.keepboard?.setSettings?.(patch) ?? null
-      if (s) setSettings(s)
-      return s ?? undefined
-    } catch { return undefined }
-  }
-
   const openMenu = (e: React.MouseEvent) => {
     e.preventDefault()
-    void window.keepboard?.cycleOpacity?.()
+    window.keepboard?.showContextMenu?.()
   }
 
-  const size = Math.max(140, Math.min(320, Math.round(settings?.windowSize || 220)))
+  const size = Math.max(140, Math.min(640, Math.round(settings?.windowSize || 220)))
 
   return (
     <div className="app-root" onContextMenu={openMenu}>
@@ -50,11 +41,6 @@ export default function App() {
       {panel === 'weekly' && (
         <div className="panel-mask" onClick={(e) => { e.stopPropagation(); setPanel(null) }}>
           <WeeklyPanel weekly={weekly} formatDuration={durationFn} onClose={() => setPanel(null)} />
-        </div>
-      )}
-      {panel === 'settings' && (
-        <div className="panel-mask" onClick={(e) => { e.stopPropagation(); setPanel(null) }}>
-          <SettingsPanel settings={settings} onClose={() => setPanel(null)} onChange={changeSettings} />
         </div>
       )}
     </div>

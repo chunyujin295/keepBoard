@@ -161,7 +161,7 @@ export default function PetCanvas({ size, overlayActive, shape = 'donut' }: Prop
     const ctx = canvas.getContext('2d')!
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
 
-    const COLS = Math.max(18, Math.round(size / 6.5))
+    const COLS = Math.max(20, Math.round(size / 4.5))
     const CELL = size / COLS
     const ROWS = COLS
     const K1 = 0.235 * COLS
@@ -248,7 +248,7 @@ export default function PetCanvas({ size, overlayActive, shape = 'donut' }: Prop
       }
 
       ctx.clearRect(0, 0, size, size)
-      ctx.font = `${Math.max(10, Math.round(CELL + 4))}px Consolas, "Courier New", monospace`
+      ctx.font = `${Math.max(9, Math.round(CELL + 2))}px Consolas, "Courier New", monospace`
       ctx.textBaseline = 'top'
       for (const c of chars) {
         ctx.fillStyle = c.col
