@@ -29,6 +29,7 @@ vite.config.d.ts
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+excalidraw*.log
 
 .DS_Store
 Thumbs.db
