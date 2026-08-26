@@ -14,7 +14,7 @@ export interface MenuHandlers {
   onQuit: () => void
   onToggleAudio: (next: boolean) => void
   onOpacity: (v: number) => void
-  onShape: (shape: 'donut' | 'sphere') => void
+  onShape: (shape: Settings['shape']) => void
   onSize: (size: number) => void
   onTheme: (t: 'dark' | 'light') => void
   onLook: (id: string) => void
@@ -87,7 +87,13 @@ export function buildTrayMenu(settings: Settings, h: MenuHandlers, customLooks: 
       label: '🧊 形状',
       submenu: [
         { label: '🍩 甜甜圈', type: 'radio', checked: curShape === 'donut', click: () => h.onShape('donut') },
-        { label: '🌍 地球仪', type: 'radio', checked: curShape === 'sphere', click: () => h.onShape('sphere') }
+        { label: '🌍 地球仪', type: 'radio', checked: curShape === 'sphere', click: () => h.onShape('sphere') },
+        { label: '🧊 立方体', type: 'radio', checked: curShape === 'cube', click: () => h.onShape('cube') },
+        { label: '🧬 DNA 双螺旋', type: 'radio', checked: curShape === 'dna', click: () => h.onShape('dna') },
+        { label: '➰ 莫比乌斯环', type: 'radio', checked: curShape === 'mobius', click: () => h.onShape('mobius') },
+        { label: '❤️ 爱心', type: 'radio', checked: curShape === 'heart', click: () => h.onShape('heart') },
+        { label: '🪐 土星', type: 'radio', checked: curShape === 'saturn', click: () => h.onShape('saturn') },
+        { label: '🪼 水母', type: 'radio', checked: curShape === 'jellyfish', click: () => h.onShape('jellyfish') }
       ]
     },
     {
@@ -222,4 +228,3 @@ function applyAutoStartLinux(enabled: boolean) {
     fs.writeFileSync(file, content, 'utf8')
   } catch { /* ignore */ }
 }
-

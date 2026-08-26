@@ -24,13 +24,20 @@ export default function App() {
   }, [])
 
   const size = Math.max(140, Math.min(640, Math.round(settings?.windowSize || 220)))
+  // Local visual-QA hook; packaged builds always use the persisted setting.
+  const previewShape = import.meta.env.DEV
+    ? new URLSearchParams(window.location.search).get('shape')
+    : null
+  const shape = previewShape && ['donut', 'sphere', 'cube', 'dna', 'mobius', 'heart', 'saturn', 'jellyfish'].includes(previewShape)
+    ? previewShape as Settings['shape']
+    : settings?.shape ?? 'donut'
 
   return (
     <div className="app-root">
       <PetCanvas
         size={size}
         overlayActive={false}
-        shape={settings?.shape ?? 'donut'}
+        shape={shape}
         dark={dark}
         look={settings?.look ?? 'classic'}
         customLook={customLook ?? undefined}

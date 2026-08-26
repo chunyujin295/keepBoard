@@ -283,7 +283,7 @@ const menuHandlers = {
   onOpacity: (v: number) => {
     applySettingsPatch({ opacity: v })
   },
-  onShape: (shape: 'donut' | 'sphere') => {
+    onShape: (shape: Settings['shape']) => {
     applySettingsPatch({ shape })
   },
   onSize: (size: number) => {

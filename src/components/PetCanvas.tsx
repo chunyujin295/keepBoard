@@ -1,13 +1,14 @@
 import { useEffect, useRef, useState } from 'react'
-import type { LookDef } from '@/lib/types'
+import type { LookDef, Settings } from '@/lib/types'
+import { WebGLGlyphRenderer, type GlyphInstance } from '@/lib/webglGlyphRenderer'
 
 interface Props {
   /** window edge length in px (square window) */
   size: number
   /** True while panels/masks cover the window — disables click-through logic */
   overlayActive?: boolean
-  /** 'donut' | 'sphere' */
-  shape?: 'donut' | 'sphere'
+  /** Procedural 3D shape rendered by the pet canvas. */
+  shape?: Settings['shape']
   /** resolved background: dark = bright colours, light = dark colours. Only
    *  used for the glow/outline halo polarity — the aesthetic brightness is
    *  `Look.tone`. */
@@ -257,7 +258,13 @@ const R1 = 1, R2 = 2, K2 = 5
  *  window but makes the shape visibly grow/shrink while it spins. */
 const FIT = {
   donut: { k: 0.542, ox: 0.5, oy: 0.5 },
-  sphere: { k: 0.963, ox: 0.5, oy: 0.5 }
+  sphere: { k: 0.963, ox: 0.5, oy: 0.5 },
+  cube: { k: 1.255, ox: 0.5, oy: 0.5 },
+  dna: { k: 1.458, ox: 0.5, oy: 0.5 },
+  mobius: { k: 1.077, ox: 0.5, oy: 0.5 },
+  heart: { k: 1.9, ox: 0.5, oy: 0.5 },
+  saturn: { k: 1.02, ox: 0.5, oy: 0.5 },
+  jellyfish: { k: 1.48, ox: 0.5, oy: 0.48 }
 } as const
 
 /** Max spacing between adjacent surface samples, in cells. The old hardcoded
@@ -286,6 +293,40 @@ const TILT_BASE = 0.9
 const MAX_VEL_B = 3.2
 const MAX_VEL_A = 1.7
 
+type SurfacePoint = { x: number; y: number; z: number; nx: number; ny: number; nz: number }
+let heartSurfaceCache: SurfacePoint[] | null = null
+
+/** Lazily voxelise the implicit heart surface once, then rotate/project only
+ *  the resulting shell points on subsequent frames. The polynomial is the
+ *  classic 3D heart with its pointed axis remapped to screen-up Y. */
+function heartSurface(): SurfacePoint[] {
+  if (heartSurfaceCache) return heartSurfaceCache
+  const out: SurfacePoint[] = []
+  const n = 70
+  for (let ix = 0; ix <= n; ix++) {
+    const x = -1.35 + 2.7 * ix / n
+    for (let iy = 0; iy <= n; iy++) {
+      const y = -1.2 + 2.55 * iy / n
+      for (let iz = 0; iz <= 52; iz++) {
+        const z = -0.78 + 1.56 * iz / 52
+        const a = x * x + 2.25 * z * z + y * y - 1
+        const y3 = y * y * y
+        const f = a * a * a - x * x * y3 - 0.1125 * z * z * y3
+        if (Math.abs(f) > 0.022) continue
+        let nx = 6 * x * a * a - 2 * x * y3
+        let ny = 6 * y * a * a - 3 * x * x * y * y - 0.3375 * z * z * y * y
+        let nz = 13.5 * z * a * a - 0.225 * z * y3
+        const len = Math.hypot(nx, ny, nz)
+        if (len < 1e-5) continue
+        nx /= len; ny /= len; nz /= len
+        out.push({ x, y, z, nx, ny, nz })
+      }
+    }
+  }
+  heartSurfaceCache = out
+  return out
+}
+
 interface DragState {
   startX: number
   startY: number
@@ -297,11 +338,15 @@ interface DragState {
 export default function PetCanvas({ size, overlayActive, shape = 'donut', dark = true, look = 'classic', customLook, charset = 'ascii', glow = false, randomSpin = false }: Props) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const rafRef = useRef(0)
+  const idleTimerRef = useRef<number | null>(null)
+  /** Restarts the demand-driven render loop after it has gone idle. */
+  const wakeAnimationRef = useRef<() => void>(() => { })
   /** main spin + secondary tumble, deg/frame — 0 at rest, capped */
   const velB = useRef(0)
   const velA = useRef(0)
   const dragRef = useRef<DragState | null>(null)
   const ignoreMouseRef = useRef(false)
+  const hitGridRef = useRef<{ mask: Uint8Array; cols: number; rows: number } | null>(null)
   const overlayRef = useRef(!!overlayActive)
   const randomSpinRef = useRef(!!randomSpin)
   const spinDirRef = useRef(1)
@@ -327,6 +372,7 @@ export default function PetCanvas({ size, overlayActive, shape = 'donut', dark =
     const dir = randomSpinRef.current ? spinDirRef.current : 1
     velB.current = Math.max(-MAX_VEL_B, Math.min(MAX_VEL_B, velB.current + dir * 1.0 * s))
     velA.current = Math.max(-MAX_VEL_A, Math.min(MAX_VEL_A, velA.current + dir * 0.45 * s))
+    wakeAnimationRef.current()
   }
 
   // ---------------- pixel-perfect mouse pass-through ----------------
@@ -355,26 +401,19 @@ export default function PetCanvas({ size, overlayActive, shape = 'donut', dark =
       const lx = e.clientX - r.left
       const ly = e.clientY - r.top
       if (lx < 0 || ly < 0 || lx >= r.width || ly >= r.height) return
-      // CSS px -> backing-store px via the real rect: the canvas box is not
-      // necessarily the window size (dpr clamp, borders, stale resize).
-      const sx = canvas.width / r.width
-      const sy = canvas.height / r.height
-      // Sample a NEIGHBOURHOOD, not the single pixel under the cursor. ASCII art
-      // is mostly holes — the glyphs only ink ~14% of the area they cover — so
-      // an exact-pixel test made the window land in a gap far more often than
-      // on ink, and it felt like you had to hit a character dead-on to grab it.
-      const rx = Math.max(1, Math.round(HIT_RADIUS * sx))
-      const ry = Math.max(1, Math.round(HIT_RADIUS * sy))
-      const x0 = Math.max(0, Math.round(lx * sx) - rx)
-      const y0 = Math.max(0, Math.round(ly * sy) - ry)
-      const bw = Math.min(canvas.width - x0, rx * 2 + 1)
-      const bh = Math.min(canvas.height - y0, ry * 2 + 1)
-      if (bw <= 0 || bh <= 0) return
-      const data = canvas.getContext('2d', { willReadFrequently: true })!
-        .getImageData(x0, y0, bw, bh).data
+      // Query the CPU-side occupied-cell mask. This avoids synchronously
+      // reading pixels back from the GPU on every mousemove.
+      const grid = hitGridRef.current
+      if (!grid) return
+      const gx = Math.floor(lx / r.width * grid.cols)
+      const gy = Math.floor(ly / r.height * grid.rows)
+      const rx = Math.max(1, Math.ceil(HIT_RADIUS / r.width * grid.cols))
+      const ry = Math.max(1, Math.ceil(HIT_RADIUS / r.height * grid.rows))
       let solid = false
-      for (let i = 3; i < data.length; i += 4) {
-        if (data[i] >= 16) { solid = true; break }
+      for (let y = Math.max(0, gy - ry); y <= Math.min(grid.rows - 1, gy + ry) && !solid; y++) {
+        for (let x = Math.max(0, gx - rx); x <= Math.min(grid.cols - 1, gx + rx); x++) {
+          if (grid.mask[y * grid.cols + x]) { solid = true; break }
+        }
       }
       applyIgnore(!solid)
     }
@@ -457,6 +496,16 @@ export default function PetCanvas({ size, overlayActive, shape = 'donut', dark =
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // Local visual-QA hook for motion checks without a native Electron input
+  // bridge. It is removed from production builds by Vite's DEV constant.
+  useEffect(() => {
+    if (!import.meta.env.DEV || new URLSearchParams(window.location.search).get('spin') !== '1') return
+    triggerKick(0.8)
+    const timer = window.setInterval(() => triggerKick(0.16), 180)
+    return () => window.clearInterval(timer)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
   // Fallback-mode data feed ONLY (ignored by main when native hook is active)
   useEffect(() => {
     const kd = (e: KeyboardEvent) => { if (!e.repeat) window.keepboard?.reportWebKey?.(e.code || 'AnyKey') }
@@ -476,8 +525,8 @@ export default function PetCanvas({ size, overlayActive, shape = 'donut', dark =
     canvas.height = Math.round(sz * dpr)
     canvas.style.width = '100%'
     canvas.style.height = '100%'
-    const ctx = canvas.getContext('2d')!
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0)
+    const measureCanvas = document.createElement('canvas')
+    const measureCtx = measureCanvas.getContext('2d')!
 
     // The cell grid follows the GLYPH's aspect, not a square. A monospace glyph
     // advances ~0.55-0.6em horizontally but occupies a full em vertically, so a
@@ -488,8 +537,8 @@ export default function PetCanvas({ size, overlayActive, shape = 'donut', dark =
     // Glyph size scales down a little as the window grows, so a large window
     // renders finer (the globe in particular needs the resolution).
     const FONT_PX = Math.max(4.2, Math.min(6.4, 6.6 - (sz - 220) / 420 * 2.4))
-    ctx.font = `${FONT_PX}px Consolas, "Courier New", monospace`
-    const CELL_W = ctx.measureText('M').width || FONT_PX * 0.6
+    measureCtx.font = `${FONT_PX}px Consolas, "Courier New", monospace`
+    const CELL_W = measureCtx.measureText('M').width || FONT_PX * 0.6
     const CELL_H = FONT_PX * LINE_RATIO
     const COLS = Math.max(20, Math.round(sz / CELL_W))
     const ROWS = Math.max(20, Math.round(sz / CELL_H))
@@ -518,6 +567,25 @@ export default function PetCanvas({ size, overlayActive, shape = 'donut', dark =
     const glyph = (s: number) =>
       CHARS[Math.min(NCH - 1, Math.max(0, (Math.pow(s, gamma) * NCH) | 0))]
 
+    let gpu: WebGLGlyphRenderer | null = null
+    const forceCanvas2d = import.meta.env.DEV &&
+      new URLSearchParams(window.location.search).get('renderer') === 'canvas2d'
+    if (!forceCanvas2d) {
+      try {
+        gpu = WebGLGlyphRenderer.create(canvas, {
+          cols: COLS, rows: ROWS, cellWidth: CELL_W, cellHeight: CELL_H,
+          cssWidth: sz, cssHeight: sz, chars: CHARS, fontPx: FONT_PX,
+          dark, glow
+        })
+      } catch (error) {
+        console.warn('[keepBoard] WebGL2 glyph renderer failed:', error)
+      }
+    }
+    const ctx = gpu ? null : canvas.getContext('2d')
+    if (!gpu && !ctx) return
+    if (ctx) canvas.dataset.renderer = 'canvas2d'
+    ctx?.setTransform(dpr, 0, 0, dpr, 0, 0)
+
     const fit = FIT[shape]
     const K1x = fit.k * COLS
     const K1y = fit.k * ROWS
@@ -543,7 +611,25 @@ export default function PetCanvas({ size, overlayActive, shape = 'donut', dark =
     const cosPh = new Float32Array(NPH), sinPh = new Float32Array(NPH)
     for (let i = 0; i < NPH; i++) { cosPh[i] = Math.cos(i * dPh); sinPh[i] = Math.sin(i * dPh) }
 
+    // Reuse cells across frames. At large sizes the torus can emit thousands
+    // of glyphs per frame; retaining this small pool avoids creating and
+    // collecting the same number of short-lived objects on every tick.
+    const chars: GlyphInstance[] = []
+    const hitMask = new Uint8Array(COLS * ROWS)
+    hitGridRef.current = { mask: hitMask, cols: COLS, rows: ROWS }
+    let charCount = 0
+    const addChar = (x: number, y: number, ch: string, col: string) => {
+      const cell = chars[charCount]
+      if (cell) {
+        cell.x = x; cell.y = y; cell.ch = ch; cell.col = col
+      } else {
+        chars.push({ x, y, ch, col })
+      }
+      charCount++
+    }
+
     const tick = () => {
+      rafRef.current = 0
       // dual-axis spin: A tumbles, B main rotation; both kick + decay; static at rest
       velB.current *= 0.94
       velA.current *= 0.94
@@ -553,14 +639,34 @@ export default function PetCanvas({ size, overlayActive, shape = 'donut', dark =
       angB.current += (velB.current * Math.PI) / 180
       colorShiftRef.current += (velB.current / 180) * 0.5
 
-      const A = angA.current, B = angB.current
+      // A full end-over-end tumble makes the long DNA silhouette collapse to
+      // a short line for much of the rotation. Keep its secondary axis as a
+      // bounded sway while the main axis still spins freely, so it maintains
+      // desktop-pet-scale coverage without dynamic zooming.
+      const A = shape === 'dna'
+        ? Math.sin(angA.current - TILT_BASE) * 0.25
+        : shape === 'heart'
+          ? Math.sin(angA.current - TILT_BASE) * 0.22
+        : shape === 'saturn'
+          // A Y-axis spin is invisible on an axially symmetric planet/ring.
+          // Couple the main B rotation into a bounded precession so input
+          // produces an obvious change in ring tilt without ever going flat.
+          ? 0.54 + Math.sin(angB.current * 2.2) * 0.38 +
+            Math.sin(angA.current - TILT_BASE) * 0.1
+          : shape === 'jellyfish'
+            ? Math.sin(angA.current - TILT_BASE) * 0.18
+            : angA.current
+      const B = shape === 'heart'
+        ? Math.sin(angB.current - 0.4) * 0.35
+        : angB.current
       const colorShift = colorShiftRef.current
       const cosA = Math.cos(A), sinA = Math.sin(A)
       const cosB = Math.cos(B), sinB = Math.sin(B)
 
       zbuf.fill(0)
+      hitMask.fill(0)
 
-      const chars: { x: number; y: number; ch: string; col: string }[] = []
+      charCount = 0
 
       if (shape === 'donut') {
         for (let i = 0; i < NTH; i++) {
@@ -581,8 +687,294 @@ export default function PetCanvas({ size, overlayActive, shape = 'donut', dark =
             if (ooz > zbuf[idx]) {
               zbuf[idx] = ooz
               const L = cosP * cosT * sinB - cosA * sinT * cosB - sinA * sinT + cosB * cosP * cosT
-              if (L > 0) chars.push({ x: xp, y: yp, ch: glyph(L / DONUT_LMAX), col })
+              if (L > 0) addChar(xp, yp, glyph(L / DONUT_LMAX), col)
             }
+          }
+        }
+      } else if (shape === 'cube') {
+        // Screen-space ray/box intersection fills every visible cell exactly
+        // once. Surface sampling left holes after the cube was scaled up to
+        // fill the window, especially at 480/640px.
+        const half = 1.05
+        const invKx = 1 / K1x, invKy = 1 / K1y
+        for (let yp = 0; yp < ROWS; yp++) {
+          const rv = -(yp - cy) * invKy
+          for (let xp = 0; xp < COLS; xp++) {
+            const ru = (xp - cx) * invKx
+            // Camera ray p(t)=(ru*t, rv*t, t-K2), transformed back to object space.
+            const oy1 = -K2 * sinA, oz1 = -K2 * cosA
+            const ox = -oz1 * sinB, oy = oy1, oz = oz1 * cosB
+            const dy1 = rv * cosA + sinA
+            const dz1 = -rv * sinA + cosA
+            const dx = ru * cosB - dz1 * sinB
+            const dy = dy1
+            const dz = ru * sinB + dz1 * cosB
+            let near = -Infinity, far = Infinity
+            let nx = 0, ny = 0, nz = 0
+            let miss = false
+            if (Math.abs(dx) < 1e-8) {
+              if (ox < -half || ox > half) miss = true
+            } else {
+              let t1 = (-half - ox) / dx, t2 = (half - ox) / dx, sign = -1
+              if (t1 > t2) { const tmp = t1; t1 = t2; t2 = tmp; sign = 1 }
+              if (t1 > near) { near = t1; nx = sign; ny = 0; nz = 0 }
+              if (t2 < far) far = t2
+              if (near > far) miss = true
+            }
+            if (!miss) {
+              if (Math.abs(dy) < 1e-8) {
+                if (oy < -half || oy > half) miss = true
+              } else {
+                let t1 = (-half - oy) / dy, t2 = (half - oy) / dy, sign = -1
+                if (t1 > t2) { const tmp = t1; t1 = t2; t2 = tmp; sign = 1 }
+                if (t1 > near) { near = t1; nx = 0; ny = sign; nz = 0 }
+                if (t2 < far) far = t2
+                if (near > far) miss = true
+              }
+            }
+            if (!miss) {
+              if (Math.abs(dz) < 1e-8) {
+                if (oz < -half || oz > half) miss = true
+              } else {
+                let t1 = (-half - oz) / dz, t2 = (half - oz) / dz, sign = -1
+                if (t1 > t2) { const tmp = t1; t1 = t2; t2 = tmp; sign = 1 }
+                if (t1 > near) { near = t1; nx = 0; ny = 0; nz = sign }
+                if (t2 < far) far = t2
+                if (near > far) miss = true
+              }
+            }
+            if (miss || far <= 0) continue
+            const nnx1 = nx * cosB + nz * sinB
+            const nnz1 = -nx * sinB + nz * cosB
+            const nny = ny * cosA - nnz1 * sinA
+            const nnz = ny * sinA + nnz1 * cosA
+            const light = Math.max(0.14, -0.45 * nnx1 + 0.55 * nny - 0.7 * nnz)
+            const face = nx ? (nx > 0 ? 0 : 1) : ny ? (ny > 0 ? 2 : 3) : (nz > 0 ? 4 : 5)
+            const band = (face / 6 + colorShift + 1) % 1
+            addChar(xp, yp, glyph(Math.min(1, light)), PALETTE[(band * 16) | 0])
+          }
+        }
+      } else if (shape === 'dna') {
+        // Two phase-opposed helices plus base-pair rungs. This is deliberately
+        // curve-based: it remains crisp while costing far less than a surface.
+        const turns = 3
+        const end = Math.PI * turns
+        const steps = Math.max(700, Math.min(2400, COLS * 10))
+        const plotDna = (x0: number, y0: number, z0: number, shade: number, col: string) => {
+          const x1 = x0 * cosB + z0 * sinB
+          const z1 = -x0 * sinB + z0 * cosB
+          const x = x1, y = y0 * cosA - z1 * sinA, z = y0 * sinA + z1 * cosA
+          const ooz = 1 / (K2 + z)
+          const xp = Math.round(cx + K1x * ooz * x)
+          const yp = Math.round(cy - K1y * ooz * y)
+          if (xp < 0 || yp < 0 || xp >= COLS || yp >= ROWS) return
+          const idx = yp * COLS + xp
+          if (ooz <= zbuf[idx]) return
+          zbuf[idx] = ooz
+          addChar(xp, yp, glyph(shade), col)
+        }
+        for (let i = 0; i <= steps; i++) {
+          const t = -end + (2 * end * i) / steps
+          const y = t / end * 1.45
+          for (let strand = 0; strand < 2; strand++) {
+            const phase = t + strand * Math.PI
+            const z = 0.66 * Math.sin(phase)
+            const shade = 0.55 + 0.4 * ((z + 0.66) / 1.32)
+            const band = ((i / steps) + strand * 0.5 + colorShift + 1) % 1
+            plotDna(0.66 * Math.cos(phase), y, z, shade, PALETTE[(band * 16) | 0])
+          }
+        }
+        const rungs = 13
+        for (let rung = 0; rung < rungs; rung++) {
+          const t = -end + (2 * end * rung) / (rungs - 1)
+          const y = t / end * 1.45
+          const x = 0.66 * Math.cos(t), z = 0.66 * Math.sin(t)
+          const rungSteps = Math.max(18, Math.round(COLS * 0.18))
+          for (let j = 0; j <= rungSteps; j++) {
+            const q = -1 + (2 * j) / rungSteps
+            const band = ((rung / rungs) + colorShift + 1) % 1
+            plotDna(x * q, y, z * q, 0.72, PALETTE[(band * 16) | 0])
+          }
+        }
+      } else if (shape === 'mobius') {
+        const nu = Math.max(100, Math.min(360, Math.ceil(COLS * 1.4)))
+        const nv = Math.max(18, Math.min(90, Math.ceil(ROWS * 0.32)))
+        const radius = 1.45, width = 0.62
+        for (let iu = 0; iu < nu; iu++) {
+          const u = 2 * Math.PI * iu / nu
+          const cu = Math.cos(u), su = Math.sin(u)
+          const ch = Math.cos(u / 2), sh = Math.sin(u / 2)
+          for (let iv = 0; iv <= nv; iv++) {
+            const v = -width + 2 * width * iv / nv
+            const q = radius + v * ch
+            const x0 = q * cu, y0 = q * su, z0 = v * sh
+            // Analytic normal: cross(partial p / partial u, partial p / partial v).
+            const ux = -q * su - 0.5 * v * sh * cu
+            const uy = q * cu - 0.5 * v * sh * su
+            const uz = 0.5 * v * ch
+            const vx = ch * cu, vy = ch * su, vz = sh
+            let nx = uy * vz - uz * vy
+            let ny = uz * vx - ux * vz
+            let nz = ux * vy - uy * vx
+            const nl = Math.hypot(nx, ny, nz) || 1
+            nx /= nl; ny /= nl; nz /= nl
+            const x1 = x0 * cosB + z0 * sinB
+            const z1 = -x0 * sinB + z0 * cosB
+            const x = x1, y = y0 * cosA - z1 * sinA, z = y0 * sinA + z1 * cosA
+            const nnx1 = nx * cosB + nz * sinB
+            const nnz1 = -nx * sinB + nz * cosB
+            const nny = ny * cosA - nnz1 * sinA
+            const nnz = ny * sinA + nnz1 * cosA
+            const ooz = 1 / (K2 + z)
+            const xp = Math.round(cx + K1x * ooz * x)
+            const yp = Math.round(cy - K1y * ooz * y)
+            if (xp < 0 || yp < 0 || xp >= COLS || yp >= ROWS) continue
+            const idx = yp * COLS + xp
+            if (ooz <= zbuf[idx]) continue
+            zbuf[idx] = ooz
+            const light = Math.max(0.12, Math.abs(-0.45 * nnx1 + 0.55 * nny - 0.7 * nnz))
+            const band = (iu / nu + colorShift + 1) % 1
+            addChar(xp, yp, glyph(Math.min(1, light)), PALETTE[(band * 16) | 0])
+          }
+        }
+      } else if (shape === 'heart') {
+        const points = heartSurface()
+        for (let i = 0; i < points.length; i++) {
+          const p = points[i]
+          const x1 = p.x * cosB + p.z * sinB
+          const z1 = -p.x * sinB + p.z * cosB
+          const x = x1, y = p.y * cosA - z1 * sinA, z = p.y * sinA + z1 * cosA
+          const nnx1 = p.nx * cosB + p.nz * sinB
+          const nnz1 = -p.nx * sinB + p.nz * cosB
+          const nny = p.ny * cosA - nnz1 * sinA
+          const nnz = p.ny * sinA + nnz1 * cosA
+          const ooz = 1 / (K2 + z)
+          const xp = Math.round(cx + K1x * ooz * x)
+          const yp = Math.round(cy - K1y * ooz * y)
+          if (xp < 0 || yp < 0 || xp >= COLS || yp >= ROWS) continue
+          const idx = yp * COLS + xp
+          if (ooz <= zbuf[idx]) continue
+          zbuf[idx] = ooz
+          const light = Math.max(0.1, -0.45 * nnx1 + 0.55 * nny - 0.7 * nnz)
+          const band = ((p.y + 1.2) / 2.55 + colorShift + 1) % 1
+          addChar(xp, yp, glyph(Math.min(1, light)), PALETTE[(band * 16) | 0])
+        }
+      } else if (shape === 'saturn') {
+        // One object-space ray tests both the planet and its ring; selecting
+        // the nearest positive t gives correct front/back ring occlusion.
+        const invKx = 1 / K1x, invKy = 1 / K1y
+        const oy1 = -K2 * sinA, oz1 = -K2 * cosA
+        const ox = -oz1 * sinB, oy = oy1, oz = oz1 * cosB
+        const roll = Math.sin(angB.current * 1.45) * 0.42
+        const cosR = Math.cos(roll), sinR = Math.sin(roll)
+        const planetR = 0.9, ringInner = 1.22, ringOuter = 2.05
+        for (let yp = 0; yp < ROWS; yp++) {
+          const rv = -(yp - cy) * invKy
+          for (let xp = 0; xp < COLS; xp++) {
+            const ru = (xp - cx) * invKx
+            // Inverse screen-space roll, then inverse X/Y model rotations.
+            const rdx = ru * cosR + rv * sinR
+            const rdy = -ru * sinR + rv * cosR
+            const dy1 = rdy * cosA + sinA
+            const dz1 = -rdy * sinA + cosA
+            const dx = rdx * cosB - dz1 * sinB
+            const dy = dy1
+            const dz = ru * sinB + dz1 * cosB
+            let planetT = Infinity
+            const qa = dx * dx + dy * dy + dz * dz
+            const qb = 2 * (ox * dx + oy * dy + oz * dz)
+            const qc = ox * ox + oy * oy + oz * oz - planetR * planetR
+            const disc = qb * qb - 4 * qa * qc
+            if (disc >= 0) {
+              const root = Math.sqrt(disc)
+              const t1 = (-qb - root) / (2 * qa), t2 = (-qb + root) / (2 * qa)
+              planetT = t1 > 0 ? t1 : t2 > 0 ? t2 : Infinity
+            }
+            let ringT = Infinity, ringRadius = 0
+            if (Math.abs(dy) > 1e-7) {
+              const t = -oy / dy
+              if (t > 0) {
+                const rx = ox + dx * t, rz = oz + dz * t
+                const rr = Math.hypot(rx, rz)
+                if (rr >= ringInner && rr <= ringOuter) { ringT = t; ringRadius = rr }
+              }
+            }
+            if (!Number.isFinite(planetT) && !Number.isFinite(ringT)) continue
+            if (ringT < planetT) {
+              const nny = cosA * cosR, nnz = sinA
+              const nnx = -cosA * sinR
+              const light = Math.max(0.3, Math.abs(-0.45 * nnx + 0.55 * nny - 0.7 * nnz))
+              const rx = ox + dx * ringT, rz = oz + dz * ringT
+              const azimuth = (Math.atan2(rz, rx) / (2 * Math.PI) + 1) % 1
+              const band = ((ringRadius - ringInner) / (ringOuter - ringInner) * 0.38 +
+                azimuth * 0.42 + colorShift + 1) % 1
+              const sectors = 0.76 + 0.24 * Math.sin(azimuth * Math.PI * 8)
+              addChar(xp, yp, glyph(Math.min(1, light * sectors)), PALETTE[(band * 16) | 0])
+            } else {
+              const hx = ox + dx * planetT, hy = oy + dy * planetT, hz = oz + dz * planetT
+              const nx = hx / planetR, ny = hy / planetR, nz = hz / planetR
+              const nnx1 = nx * cosB + nz * sinB
+              const nnz1 = -nx * sinB + nz * cosB
+              const nny1 = ny * cosA - nnz1 * sinA
+              const nnz = ny * sinA + nnz1 * cosA
+              const nnx = nnx1 * cosR - nny1 * sinR
+              const nny = nnx1 * sinR + nny1 * cosR
+              const light = Math.max(0.16, -0.45 * nnx + 0.55 * nny - 0.7 * nnz)
+              const longitude = Math.atan2(hz, hx)
+              const belts = 0.06 * Math.sin(longitude * 3 + hy * 7)
+              const band = ((hy / planetR + 1) * 0.42 + longitude / (2 * Math.PI) * 0.24 +
+                colorShift + 1) % 1
+              addChar(xp, yp, glyph(Math.min(1, light + belts)), PALETTE[(band * 16) | 0])
+            }
+          }
+        }
+      } else if (shape === 'jellyfish') {
+        const phase = performance.now() * 0.002
+        const pulse = 1 + 0.045 * Math.sin(phase)
+        const plotJelly = (x0: number, y0: number, z0: number, shade: number, band: number) => {
+          const x1 = x0 * cosB + z0 * sinB
+          const z1 = -x0 * sinB + z0 * cosB
+          const x = x1, y = y0 * cosA - z1 * sinA, z = y0 * sinA + z1 * cosA
+          const ooz = 1 / (K2 + z)
+          const xp = Math.round(cx + K1x * ooz * x)
+          const yp = Math.round(cy - K1y * ooz * y)
+          if (xp < 0 || yp < 0 || xp >= COLS || yp >= ROWS) return
+          const idx = yp * COLS + xp
+          if (ooz <= zbuf[idx]) return
+          zbuf[idx] = ooz
+          addChar(xp, yp, glyph(Math.min(1, shade)), PALETTE[((band + colorShift + 1) % 1 * 16) | 0])
+        }
+        const nu = Math.max(90, Math.min(360, Math.ceil(COLS * 1.6)))
+        const nv = Math.max(20, Math.min(90, Math.ceil(ROWS * 0.34)))
+        for (let iu = 0; iu < nu; iu++) {
+          const u = 2 * Math.PI * iu / nu, cu = Math.cos(u), su = Math.sin(u)
+          for (let iv = 0; iv <= nv; iv++) {
+            const v = Math.PI * 0.5 * iv / nv
+            const sv = Math.sin(v), cv = Math.cos(v)
+            const x0 = 0.96 * pulse * sv * cu
+            const y0 = 0.42 + 0.82 * cv
+            const z0 = 0.96 * pulse * sv * su
+            const nx = sv * cu, ny = cv, nz = sv * su
+            const nnx1 = nx * cosB + nz * sinB
+            const nnz1 = -nx * sinB + nz * cosB
+            const nny = ny * cosA - nnz1 * sinA
+            const nnz = ny * sinA + nnz1 * cosA
+            const light = Math.max(0.16, -0.45 * nnx1 + 0.55 * nny - 0.7 * nnz)
+            plotJelly(x0, y0, z0, light, iu / nu)
+          }
+        }
+        const tentacles = 9
+        const lineSteps = Math.max(90, Math.min(300, Math.ceil(ROWS * 1.2)))
+        for (let line = 0; line < tentacles; line++) {
+          const anchor = -0.74 + 1.48 * line / (tentacles - 1)
+          const depth = 0.18 * Math.sin(line * 2.1)
+          for (let j = 0; j <= lineSteps; j++) {
+            const q = j / lineSteps
+            const wave = 0.11 * q * Math.sin(q * 7 + phase * 1.35 + line * 0.8)
+            const x0 = anchor * (1 - 0.16 * q) + wave
+            const y0 = 0.39 - 1.86 * q
+            const z0 = depth + 0.08 * q * Math.cos(q * 6 + phase + line)
+            plotJelly(x0, y0, z0, 0.48 + 0.45 * (1 - q), line / tentacles)
           }
         }
       } else {
@@ -635,43 +1027,66 @@ export default function PetCanvas({ size, overlayActive, shape = 'donut', dark =
             const col = pal[Math.min(7, (shade * 8) | 0)]
             // ocean uses a lighter glyph than its true shade would pick, so the
             // ball stays a smooth blue with land visibly denser on top of it
-            chars.push({ x: xp, y: yp, ch: glyph(terrain === 0 ? shade * 0.7 : shade), col })
+            addChar(xp, yp, glyph(terrain === 0 ? shade * 0.7 : shade), col)
           }
         }
       }
 
       // clear in canvas units (sz), not the window-setting prop — they diverge
-      ctx.clearRect(0, 0, sz, sz)
-      ctx.font = `${FONT_PX}px Consolas, "Courier New", monospace`
-      // center each glyph in its cell; top/left anchoring biased the whole
-      // shape up-left by most of a cell
-      ctx.textBaseline = 'middle'
-      ctx.textAlign = 'center'
-
-      // Optional glow: a soft halo whose polarity follows the background
-      // (`dark`), so the pet stays legible over either desktop. Kept SMALL and
-      // low-alpha on purpose — a big per-glyph shadow bleeds neighbours together
-      // and turns the whole shape fuzzy.
-      if (glow) {
-        ctx.shadowColor = dark ? 'rgba(255,255,255,0.55)' : 'rgba(0,0,0,0.5)'
-        ctx.shadowBlur = Math.max(1.5, FONT_PX * 0.4)
+      for (let i = 0; i < charCount; i++) {
+        const c = chars[i]
+        hitMask[c.y * COLS + c.x] = 1
+      }
+      if (gpu) {
+        gpu.draw(chars, charCount)
+      } else if (ctx) {
+        ctx.clearRect(0, 0, sz, sz)
+        ctx.font = `${FONT_PX}px Consolas, "Courier New", monospace`
+        ctx.textBaseline = 'middle'
+        ctx.textAlign = 'center'
+        if (glow) {
+          ctx.shadowColor = dark ? 'rgba(255,255,255,0.55)' : 'rgba(0,0,0,0.5)'
+          ctx.shadowBlur = Math.max(1.5, FONT_PX * 0.4)
+        }
+        let lastCol = ''
+        for (let i = 0; i < charCount; i++) {
+          const c = chars[i]
+          if (c.col !== lastCol) { ctx.fillStyle = c.col; lastCol = c.col }
+          ctx.fillText(c.ch, (c.x + 0.5) * CELL_W, (c.y + 0.5) * CELL_H)
+        }
+        ctx.shadowBlur = 0
       }
 
-      // Only touch fillStyle when the colour actually changes. The torus emits
-      // chars in ring order (one colour per ring) so this collapses thousands of
-      // state changes into ~16.
-      let lastCol = ''
-      for (const c of chars) {
-        if (c.col !== lastCol) { ctx.fillStyle = c.col; lastCol = c.col }
-        ctx.fillText(c.ch, (c.x + 0.5) * CELL_W, (c.y + 0.5) * CELL_H)
+      // Once both axes settle, preserve the final frame and stop consuming a
+      // browser frame forever. The next input impulse calls wake() below.
+      if (velB.current !== 0 || velA.current !== 0) {
+        rafRef.current = requestAnimationFrame(tick)
+      } else if (shape === 'jellyfish') {
+        // Jellyfish has a subtle autonomous pulse, but idles at 12fps instead
+        // of keeping Chromium's 60fps animation clock hot forever.
+        idleTimerRef.current = window.setTimeout(wake, 83)
       }
-      ctx.shadowBlur = 0
-
-      rafRef.current = requestAnimationFrame(tick)
     }
-    rafRef.current = requestAnimationFrame(tick)
+    const wake = () => {
+      if (idleTimerRef.current !== null) {
+        window.clearTimeout(idleTimerRef.current)
+        idleTimerRef.current = null
+      }
+      if (!rafRef.current) rafRef.current = requestAnimationFrame(tick)
+    }
+    wakeAnimationRef.current = wake
+    wake()
 
-    return () => cancelAnimationFrame(rafRef.current)
+    return () => {
+      wakeAnimationRef.current = () => { }
+      if (rafRef.current) cancelAnimationFrame(rafRef.current)
+      if (idleTimerRef.current !== null) window.clearTimeout(idleTimerRef.current)
+      idleTimerRef.current = null
+      gpu?.dispose()
+      if (!gpu) delete canvas.dataset.renderer
+      if (hitGridRef.current?.mask === hitMask) hitGridRef.current = null
+      rafRef.current = 0
+    }
   }, [shape, size, viewTick, dark, look, customLook, charset, glow, randomSpin])
 
   return (
