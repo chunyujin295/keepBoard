@@ -2,14 +2,25 @@ import { useEffect, useState } from 'react'
 import PetCanvas from '@/components/PetCanvas'
 import DailyPanel from '@/components/DailyPanel'
 import WeeklyPanel from '@/components/WeeklyPanel'
-import type { DailyStats, PanelId, Settings, WeeklyStats } from '@/lib/types'
+import type { CustomLook, DailyStats, PanelId, Settings, WeeklyStats } from '@/lib/types'
 
 export default function App() {
   const [settings, setSettings] = useState<Settings | null>(null)
   const [daily, setDaily] = useState<DailyStats | null>(null)
   const [weekly, setWeekly] = useState<WeeklyStats | null>(null)
   const [panel, setPanel] = useState<PanelId>(null)
+  const [dark, setDark] = useState(true)
+  const [customLooks, setCustomLooks] = useState<CustomLook[]>([])
   const [durationFn] = useState<(ms: number) => string>(formatDurationLocal)
+
+  // Resolved dark/light + the list of user-defined looks. Re-resolve whenever
+  // settings change (picking a look from the tray triggers one).
+  useEffect(() => {
+    window.keepboard?.getDark?.().then((d: boolean) => setDark(d)).catch(() => { })
+    window.keepboard?.getCustomLooks?.().then((list: CustomLook[]) => setCustomLooks(list ?? [])).catch(() => { })
+  }, [settings])
+
+  const customLook = settings ? customLooks.find((c) => c.id === settings.look) : undefined
 
   useEffect(() => {
     let offs: Array<() => void> = []
@@ -26,7 +37,17 @@ export default function App() {
 
   return (
     <div className="app-root">
-      <PetCanvas size={size} overlayActive={panel !== null} shape={settings?.shape ?? 'donut'} />
+      <PetCanvas
+        size={size}
+        overlayActive={panel !== null}
+        shape={settings?.shape ?? 'donut'}
+        dark={dark}
+        look={settings?.look ?? 'classic'}
+        customLook={customLook ?? undefined}
+        charset={settings?.charset ?? 'ascii'}
+        glow={settings?.glow === true}
+        randomSpin={settings?.randomSpin === true}
+      />
 
       {panel === 'daily' && (
         <div className="panel-mask" onClick={(e) => { e.stopPropagation(); setPanel(null) }}>

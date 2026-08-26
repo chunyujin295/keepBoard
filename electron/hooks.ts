@@ -63,6 +63,12 @@ export function normalizeKeyCode(code: number): string {
 export class GlobalHooker extends EventEmitter {
   private running = false
   private nativeModule: any = null
+  /** Keys currently held down (uiohook keycodes). OS auto-repeat re-fires
+   *  `keydown` for a held key at the system repeat rate, so a held key would
+   *  otherwise read as a torrent of presses — spinning the pet non-stop and
+   *  inflating the key stats. First keydown counts, repeats are dropped until
+   *  `keyup` clears the entry. */
+  private heldKeys = new Set<number>()
   /** Raw events received from the native hook — surfaced in the UI so users
    *  can verify global capture is actually working in their environment. */
   nativeEventCount = 0
@@ -83,11 +89,19 @@ export class GlobalHooker extends EventEmitter {
       const m = require('uiohook-napi')
       const hook = m?.uIOhook
       if (hook && typeof hook.start === 'function') {
-        hook.on('keydown', (e: any) => this.emitNative({
-          type: 'keypress',
-          subtype: normalizeKeyCode(e?.keycode ?? 0),
-          ts: Date.now()
-        }))
+        hook.on('keydown', (e: any) => {
+          const code = e?.keycode ?? 0
+          if (this.heldKeys.has(code)) return   // OS auto-repeat — drop
+          this.heldKeys.add(code)
+          this.emitNative({
+            type: 'keypress',
+            subtype: normalizeKeyCode(code),
+            ts: Date.now()
+          })
+        })
+        hook.on('keyup', (e: any) => {
+          this.heldKeys.delete(e?.keycode ?? 0)
+        })
         hook.on('mousedown', (e: any) => {
           // libuiohook buttons: 1=left, 2=middle, 3=right
           const map: Record<number, InputEventType> = {
@@ -113,6 +127,7 @@ export class GlobalHooker extends EventEmitter {
 
   stop() {
     this.running = false
+    this.heldKeys.clear()
     if (this.nativeModule?.uIOhook) {
       try { this.nativeModule.uIOhook.stop() } catch { /* ignore */ }
     }

@@ -2,7 +2,7 @@ import { app, Menu } from 'electron'
 import path from 'node:path'
 import fs from 'node:fs'
 import os from 'node:os'
-import { Settings } from './types'
+import { CustomLook, Settings } from './types'
 
 export interface MenuHandlers {
   onToggleAutoStart: (next: boolean) => void
@@ -16,15 +16,69 @@ export interface MenuHandlers {
   onOpacity: (v: number) => void
   onShape: (shape: 'donut' | 'sphere') => void
   onSize: (size: number) => void
+  onTheme: (t: 'dark' | 'light') => void
+  onLook: (id: string) => void
+  onCharset: (c: 'ascii' | 'block' | 'dot' | 'line') => void
+  onGlow: (next: boolean) => void
+  onToggleRandomSpin: (next: boolean) => void
+  onOpenLookConfig: () => void
 }
+
+const THEME_LEVELS: { id: 'dark' | 'light'; label: string }[] = [
+  { id: 'dark', label: '深色背景' },
+  { id: 'light', label: '浅色背景' }
+]
+
+const CHARSET_LEVELS: { id: 'ascii' | 'block' | 'dot' | 'line'; label: string }[] = [
+  { id: 'ascii', label: 'ASCII 经典' },
+  { id: 'block', label: '像素方块 ░▒▓█' },
+  { id: 'dot', label: '点阵 ·∙•●' },
+  { id: 'line', label: '线条 ·-=|\\' }
+]
+
+// Built-in colour-look presets — the full definitions live in PetCanvas (LOOKS).
+// Character set and glow are separate settings, not part of a look.
+const LOOK_PRESETS: { id: string; label: string }[] = [
+  { id: 'classic', label: '🌈 经典彩虹' },
+  { id: 'neon', label: '🩵 霓虹' },
+  { id: 'cyber', label: '🤖 赛博朋克' },
+  { id: 'aurora', label: '🌌 极光' },
+  { id: 'sunset', label: '🌇 日落' },
+  { id: 'ocean', label: '🌊 海洋' },
+  { id: 'forest', label: '🌲 森林' },
+  { id: 'candy', label: '🍬 马卡龙' },
+  { id: 'gold', label: '✨ 鎏金' }
+]
 
 export const OPACITY_LEVELS = [1, 0.75, 0.5, 0.25]
 const SIZE_LEVELS = [180, 240, 320, 400, 480, 640]
 
-export function buildTrayMenu(settings: Settings, h: MenuHandlers): Menu {
+export function buildTrayMenu(settings: Settings, h: MenuHandlers, customLooks: CustomLook[] = []): Menu {
   const curOpacity = settings.opacity ?? 1
   const curSize = settings.windowSize || 220
   const curShape = settings.shape || 'donut'
+  const lookItems: Electron.MenuItemConstructorOptions[] = LOOK_PRESETS.map((p) => ({
+    label: p.label,
+    type: 'radio' as const,
+    checked: (settings.look ?? 'classic') === p.id,
+    click: () => h.onLook(p.id)
+  }))
+  // Custom looks live below a separator, each with its own icon + name, then a
+  // final separator and an "open config file" shortcut.
+  if (customLooks.length) {
+    lookItems.push({ type: 'separator' })
+    for (const c of customLooks) {
+      lookItems.push({
+        label: `${c.icon} ${c.name}`,
+        type: 'radio' as const,
+        checked: settings.look === c.id,
+        click: () => h.onLook(c.id)
+      })
+    }
+  }
+  lookItems.push({ type: 'separator' })
+  lookItems.push({ label: '📂 打开配置文件', click: () => h.onOpenLookConfig() })
+
   return Menu.buildFromTemplate([
     { label: '📊 今日统计', click: () => h.onShowDaily() },
     { label: '📈 本周统计', click: () => h.onShowWeekly() },
@@ -33,7 +87,7 @@ export function buildTrayMenu(settings: Settings, h: MenuHandlers): Menu {
       label: '🧊 形状',
       submenu: [
         { label: '🍩 甜甜圈', type: 'radio', checked: curShape === 'donut', click: () => h.onShape('donut') },
-        { label: '🔵 球体', type: 'radio', checked: curShape === 'sphere', click: () => h.onShape('sphere') }
+        { label: '🌍 地球仪', type: 'radio', checked: curShape === 'sphere', click: () => h.onShape('sphere') }
       ]
     },
     {
@@ -44,6 +98,40 @@ export function buildTrayMenu(settings: Settings, h: MenuHandlers): Menu {
         checked: curSize === v,
         click: () => h.onSize(v)
       }))
+    },
+    {
+      label: '🎨 配色',
+      submenu: lookItems
+    },
+    {
+      label: '🔡 字符集',
+      submenu: CHARSET_LEVELS.map((c) => ({
+        label: c.label,
+        type: 'radio' as const,
+        checked: (settings.charset ?? 'ascii') === c.id,
+        click: () => h.onCharset(c.id)
+      }))
+    },
+    {
+      label: '✨ 光晕',
+      type: 'checkbox',
+      checked: settings.glow === true,
+      click: (m) => h.onGlow(m.checked)
+    },
+    {
+      label: '🌓 背景',
+      submenu: THEME_LEVELS.map((t) => ({
+        label: t.label,
+        type: 'radio' as const,
+        checked: (settings.theme ?? 'dark') === t.id,
+        click: () => h.onTheme(t.id)
+      }))
+    },
+    {
+      label: '🎲 随机转向',
+      type: 'checkbox',
+      checked: settings.randomSpin === true,
+      click: (m) => h.onToggleRandomSpin(m.checked)
     },
     {
       label: '🌗 不透明度',

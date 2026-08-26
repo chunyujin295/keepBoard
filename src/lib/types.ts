@@ -8,6 +8,26 @@ export interface Settings {
   volume: number
   dockEdge: 'auto' | 'top' | 'bottom' | 'left' | 'right'
   opacity: number
+  theme: 'dark' | 'light'
+  look: string
+  charset: 'ascii' | 'block' | 'dot' | 'line'
+  glow: boolean
+  randomSpin: boolean
+}
+
+export interface LookDef {
+  chars?: string
+  tone?: 'night' | 'dark' | 'mid' | 'bright' | 'high'
+  saturation?: 'gray' | 'muted' | 'normal' | 'vivid' | 'neon'
+  palette?: string
+  colors?: string[]
+  gamma?: number
+}
+
+export interface CustomLook extends LookDef {
+  id: string
+  name: string
+  icon: string
 }
 
 export interface DailyStats {

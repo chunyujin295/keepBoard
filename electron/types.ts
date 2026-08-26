@@ -8,6 +8,44 @@ export interface Settings {
   volume: number
   dockEdge: 'auto' | 'top' | 'bottom' | 'left' | 'right'
   opacity: number
+  /** Background theme. Picks the glow halo polarity (dark background -> light
+   *  halo, light background -> dark halo). Aesthetic brightness is `Look.tone`. */
+  theme: 'dark' | 'light'
+  /** Named look preset (see LOOKS in PetCanvas). 'custom' reads the user's
+   *  keepboard-look.json. Colour-ish dimensions only: tone/saturation/palette. */
+  look: string
+  /** Character-set style — a separate toggle from the colour look. */
+  charset: 'ascii' | 'block' | 'dot' | 'line'
+  /** Soft halo under the shape for legibility on any desktop. */
+  glow: boolean
+  /** Kick the spin in a random direction per input, instead of always forward. */
+  randomSpin: boolean
+}
+
+/** The colour-ish appearance dimensions of a look, exposed in a preset and
+ *  individually in keepboard-look.json. Character set and glow are separate
+ *  settings, not part of the look. */
+export interface LookDef {
+  /** direct override of the shading ramp (ignores `settings.charset`) */
+  chars?: string
+  /** overall brightness, decoupled from the background */
+  tone?: 'night' | 'dark' | 'mid' | 'bright' | 'high'
+  /** saturation / vividness */
+  saturation?: 'gray' | 'muted' | 'normal' | 'vivid' | 'neon'
+  /** hue gradient id (rainbow/neon/sunset/ocean/mono/aurora/cyber/candy/gold/forest) */
+  palette?: string
+  /** custom hex list, interpolated to a gradient — overrides `palette` */
+  colors?: string[]
+  /** shading-ramp weighting (gamma < 1 pushes toward heavier glyphs) */
+  gamma?: number
+}
+
+/** A user-defined look from keepboard-look.json: a LookDef plus the id, display
+ *  name and menu icon that identify it in the tray. */
+export interface CustomLook extends LookDef {
+  id: string
+  name: string
+  icon: string
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -19,7 +57,12 @@ export const DEFAULT_SETTINGS: Settings = {
   audioEnabled: false,
   volume: 0.4,
   dockEdge: 'auto',
-  opacity: 1
+  opacity: 1,
+  theme: 'dark',
+  look: 'classic',
+  charset: 'ascii',
+  glow: false,
+  randomSpin: false
 }
 
 export interface DailyStats {

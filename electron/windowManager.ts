@@ -5,11 +5,17 @@ import { logSize, rectsClose } from './sizeLog'
 export class WindowManager {
   private win: BrowserWindow
   private taskbar: TaskbarInfo
+  private canonicalSize: () => number
   private readonly DOCK_MARGIN = 1
 
-  constructor(win: BrowserWindow, taskbar: TaskbarInfo) {
+  /** `canonicalSize` returns the edge length the window is SUPPOSED to be, read
+   *  from settings. Docking must never derive size from getBounds(): on
+   *  fractional DPI that measurement is off by a pixel or two, and writing it
+   *  back is what let the window creep. */
+  constructor(win: BrowserWindow, taskbar: TaskbarInfo, canonicalSize: () => number) {
     this.win = win
     this.taskbar = taskbar
+    this.canonicalSize = canonicalSize
   }
 
   updateTaskbar(taskbar: TaskbarInfo) {
@@ -22,8 +28,8 @@ export class WindowManager {
 
   dockToTaskbar() {
     const cur = this.win.getBounds()
-    const width = cur.width
-    const height = cur.height
+    const width = this.canonicalSize()
+    const height = width
     const display = screen.getDisplayNearestPoint({
       x: cur.x + width / 2,
       y: cur.y + height / 2
@@ -72,6 +78,8 @@ export class WindowManager {
     }
     console.log(`[keepBoard] dock: edge=${tgt.edge} cur={${cur.x},${cur.y},${cur.width}x${cur.height}} next={${next.x},${next.y},${next.width}x${next.height}}`)
     if (rectsClose(next, cur)) { console.log('[keepBoard] dock: skip (same pos)'); return }
+    // Writes the canonical width/height, so docking also corrects any drift
+    // that crept in elsewhere rather than preserving it.
     this.win.setBounds(next)
     logSize('dock', next)
   }

@@ -22,6 +22,9 @@ const api = {
 
   getSettings: (): Promise<Settings> => ipcRenderer.invoke('settings:get'),
   setSettings: (patch: Partial<Settings>): Promise<Settings> => ipcRenderer.invoke('settings:set', patch),
+  getDark: (): Promise<boolean> => ipcRenderer.invoke('app:dark'),
+  getCustomLooks: (): Promise<import('./types').CustomLook[]> => ipcRenderer.invoke('look:custom'),
+  openLookConfig: (): Promise<boolean> => ipcRenderer.invoke('look:open-config'),
   onSettings: (cb: (s: Settings) => void) => {
     const h = (_e: any, s: Settings) => cb(s)
     ipcRenderer.on('settings:update', h)

@@ -8,7 +8,7 @@ import { WindowManager } from './windowManager'
 import { AppStore } from './store'
 import { GlobalHooker, classifyKey } from './hooks'
 import { buildTrayMenu, applyAutoStart, OPACITY_LEVELS } from './menu'
-import { DailyStats, Settings, WeeklyStats } from './types'
+import { CustomLook, DailyStats, Settings, WeeklyStats } from './types'
 import { todayKey, weeklyToCsv } from './statsUtils'
 import { logSize, getSizeLog } from './sizeLog'
 
@@ -139,7 +139,7 @@ function createWindow() {
 
   const primaryDisplay = screen.getPrimaryDisplay()
   const taskbar = detectTaskbar(primaryDisplay.bounds, primaryDisplay.workArea)
-  winMgr = new WindowManager(mainWindow, taskbar)
+  winMgr = new WindowManager(mainWindow, taskbar, winSize)
   if (settings.autoDock) winMgr.dockToTaskbar()
 
   if (isDev) {
@@ -159,6 +159,10 @@ function createWindow() {
     if (Date.now() - dragEndTs < 300) return
     if (moveTimer) clearTimeout(moveTimer)
     moveTimer = setTimeout(() => {
+      // Re-check: a drag can start inside the 150ms window, and a timer armed
+      // before it would otherwise yank the window to the taskbar mid-drag.
+      if (dragging || Date.now() - dragEndTs < 300) return
+      if (!store?.getSettings().autoDock) return
       winMgr?.dockToTaskbar()
     }, 150)
   })
@@ -232,6 +236,25 @@ const menuHandlers = {
   },
   onSize: (size: number) => {
     applySettingsPatch({ windowSize: size })
+  },
+  onTheme: (theme: 'dark' | 'light') => {
+    applySettingsPatch({ theme })
+  },
+  onLook: (look: string) => {
+    applySettingsPatch({ look })
+  },
+  onCharset: (charset: 'ascii' | 'block' | 'dot' | 'line') => {
+    applySettingsPatch({ charset })
+  },
+  onGlow: (next: boolean) => {
+    applySettingsPatch({ glow: next })
+  },
+  onToggleRandomSpin: (next: boolean) => {
+    applySettingsPatch({ randomSpin: next })
+  },
+  onOpenLookConfig: () => {
+    loadCustomLooks() // ensures the file exists
+    shell.openPath(lookConfigPath()).catch(() => { })
   }
 }
 
@@ -254,18 +277,81 @@ function applySettingsPatch(patch: Partial<Settings>): Settings | undefined {
   if (patch.windowSize !== undefined && mainWindow) {
     const canvasSize = Math.max(140, Math.min(640, Math.round(patch.windowSize)))
     const winW = canvasSize + BORDER * 2
+    const cur = mainWindow.getBounds()
+    // The window is pinned by min == max, so relax the constraints before
+    // setBounds or the new size is clamped back to the old one — previously
+    // only min/max moved and the window never actually resized.
+    // Deliberately NOT touching `resizable`: flipping it rewrites the Win32
+    // window style, which can shift the window on its own.
+    mainWindow.setMinimumSize(1, 1)
+    mainWindow.setMaximumSize(10000, 10000)
+    mainWindow.setBounds({
+      x: Math.round(cur.x + (cur.width - winW) / 2),
+      y: Math.round(cur.y + (cur.height - winW) / 2),
+      width: winW,
+      height: winW
+    })
     mainWindow.setMinimumSize(winW, winW)
     mainWindow.setMaximumSize(winW, winW)
-    const cur = mainWindow.getBounds()
-    mainWindow.setPosition(
-      Math.round(cur.x + (cur.width - winW) / 2),
-      Math.round(cur.y + (cur.height - winW) / 2)
-    )
+    logSize('resize', mainWindow.getBounds())
     if (store?.getSettings().autoDock) setTimeout(() => winMgr?.dockToTaskbar(), 80)
   }
   if (patch.autoDock) winMgr?.dockToTaskbar()
   pushSettings()
   return s
+}
+
+function lookConfigPath(): string {
+  return path.join(app.getPath('userData'), 'keepboard-look.json')
+}
+
+function writeDefaultLookConfig(file: string) {
+  const def = {
+    looks: [
+      {
+        id: 'custom-neon',
+        name: '我的霓虹',
+        icon: '🎇',
+        tone: 'bright',
+        saturation: 'neon',
+        palette: 'cyber'
+      }
+    ]
+  }
+  try { fs.writeFileSync(file, JSON.stringify(def, null, 2), 'utf8') } catch { /* ignore */ }
+}
+
+function sanitizeCustomLook(e: unknown): CustomLook | null {
+  if (!e || typeof e !== 'object') return null
+  const o = e as Record<string, unknown>
+  if (typeof o.id !== 'string' || !o.id) return null
+  const pick = <T extends string>(k: string, set: readonly T[]): T | undefined => {
+    const v = o[k]
+    return typeof v === 'string' && set.includes(v as T) ? (v as T) : undefined
+  }
+  return {
+    id: o.id,
+    name: typeof o.name === 'string' ? o.name : o.id,
+    icon: typeof o.icon === 'string' ? o.icon : '🎨',
+    chars: typeof o.chars === 'string' ? o.chars : undefined,
+    tone: pick('tone', ['night', 'dark', 'mid', 'bright', 'high'] as const),
+    saturation: pick('saturation', ['gray', 'muted', 'normal', 'vivid', 'neon'] as const),
+    palette: typeof o.palette === 'string' ? o.palette : undefined,
+    colors: Array.isArray(o.colors) ? (o.colors as unknown[]).filter((c) => typeof c === 'string') as string[] : undefined,
+    gamma: typeof o.gamma === 'number' ? o.gamma : undefined
+  }
+}
+
+function loadCustomLooks(): CustomLook[] {
+  const file = lookConfigPath()
+  try {
+    if (!fs.existsSync(file)) writeDefaultLookConfig(file)
+    const raw = JSON.parse(fs.readFileSync(file, 'utf8'))
+    const list = Array.isArray(raw) ? raw : Array.isArray((raw as any)?.looks) ? (raw as any).looks : []
+    return (list as unknown[]).map(sanitizeCustomLook).filter((x): x is CustomLook => !!x)
+  } catch {
+    return []
+  }
 }
 
 function createTray() {
@@ -283,7 +369,7 @@ function createTray() {
     // directly to popUpContextMenu — never caches stale state.
     tray.on('right-click', () => {
       if (!store) return
-      tray?.popUpContextMenu(buildTrayMenu(store.getSettings(), menuHandlers))
+      tray?.popUpContextMenu(buildTrayMenu(store.getSettings(), menuHandlers, loadCustomLooks()))
     })
   } catch { /* ignore */ }
 }
@@ -328,8 +414,20 @@ function registerIpc() {
   ipcMain.handle('win:get-pos', () => mainWindow?.getBounds() ?? null)
   ipcMain.on('win:drag-to', (_e, x: number, y: number) => {
     if (!mainWindow || typeof x !== 'number' || typeof y !== 'number') return
-    const [w, h] = mainWindow.getSize()
-    mainWindow.setBounds({ x: Math.round(x), y: Math.round(y), width: w, height: h })
+    // Always write the size from SETTINGS, never from getSize().
+    //
+    // On fractional display scaling (125%/150%/175%) Chromium converts DIP<->
+    // physical with an *enclosing* rect: floor the origin, ceil the far edge.
+    // The physical width therefore depends on the fractional part of x, so a
+    // 220 DIP window reads back as 222 at some x values. The old handler did
+    // `const [w,h] = getSize()` and wrote that back — feeding a measurement
+    // into the thing being measured, ~60x/s, which ratcheted the window bigger
+    // for the whole drag. Writing a constant cannot accumulate.
+    //
+    // setPosition() is NOT a way out: on Windows Electron implements it as
+    // getBounds() + SetBounds(), so the size round-trips there too.
+    const S = winSize()
+    mainWindow.setBounds({ x: Math.round(x), y: Math.round(y), width: S, height: S })
   })
 
   // Drag lifecycle: suspend autoDock while dragging, snap once on release.
@@ -337,6 +435,17 @@ function registerIpc() {
   ipcMain.on('win:drag-end', () => {
     dragging = false
     dragEndTs = Date.now()
+    // Settle point: assert the canonical size once so any drift introduced by
+    // something other than the drag path is corrected, and journal the result
+    // so an unexpected size is attributable instead of mysterious.
+    if (mainWindow) {
+      const S = winSize()
+      const b = mainWindow.getBounds()
+      if (b.width !== S || b.height !== S) {
+        mainWindow.setBounds({ x: b.x, y: b.y, width: S, height: S })
+        logSize('drag-end-correct', { x: b.x, y: b.y, width: S, height: S })
+      }
+    }
     if (store?.getSettings().autoDock) setTimeout(() => winMgr?.dockToTaskbar(), 60)
   })
   // Window size is set at creation and by applySettingsPatch — no need for
@@ -359,6 +468,22 @@ function registerIpc() {
     if (!store) return
     if (p === 'userData') shell.openPath(app.getPath('userData'))
   })
+
+  // Resolved dark/light from the persisted theme (manual dark/light only).
+  ipcMain.handle('app:dark', () => {
+    return (store?.getSettings().theme ?? 'dark') === 'dark'
+  })
+
+  // User-defined looks from userData/keepboard-look.json (a list, each with id /
+  // name / icon plus the LookDef fields).
+  ipcMain.handle('look:custom', () => loadCustomLooks())
+
+  // Open the config file in the system editor, creating a default one first.
+  ipcMain.handle('look:open-config', () => {
+    loadCustomLooks() // ensures the file exists
+    return shell.openPath(lookConfigPath()).then(() => true).catch(() => false)
+  })
+
   ipcMain.on('app:quit', () => app.quit())
 }
 
