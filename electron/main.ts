@@ -249,12 +249,20 @@ function loadIcon(file: string): Electron.NativeImage | undefined {
 }
 
 function windowIcon(): Electron.NativeImage | undefined {
-  return loadIcon('icon.png') ?? loadIcon('icon.ico')
+  // Windows must receive the multi-representation ICO so the taskbar can pick
+  // an exact bitmap for the current DPI. Passing the 512px PNG forces the
+  // shell to downscale it and makes the pixel-art icon visibly soft.
+  return process.platform === 'win32'
+    ? loadIcon('icon.ico') ?? loadIcon('icon.png')
+    : loadIcon('icon.png') ?? loadIcon('icon.ico')
 }
 
 function trayIcon(): Electron.NativeImage | undefined {
-  // Dedicated full-bleed 16px render stays crisp in the system tray
-  return loadIcon('icon-16.png') ?? loadIcon('icon.ico') ?? loadIcon('icon.png')
+  // ICO lets Windows select 16/20/24/32px according to tray DPI. Other
+  // platforms keep the dedicated 16px PNG as their first choice.
+  return process.platform === 'win32'
+    ? loadIcon('icon.ico') ?? loadIcon('icon-16.png') ?? loadIcon('icon.png')
+    : loadIcon('icon-16.png') ?? loadIcon('icon.png') ?? loadIcon('icon.ico')
 }
 
 const menuHandlers = {

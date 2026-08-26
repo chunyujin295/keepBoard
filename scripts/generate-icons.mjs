@@ -2,7 +2,7 @@
  * Generate keepBoard app icons from docs/img/icon.png.
  * Outputs to assets/icons/ (COMMITTED — runtime & installer resource):
  *   assets/icons/icon.png (512x512), assets/icons/icon.ico (multi-size),
- *   assets/icons/icon-{16..256}.png
+ *   assets/icons/icon-{16..256}.png, including Windows DPI taskbar sizes
  * Run:  node scripts/generate-icons.mjs
  */
 import { PNG } from 'pngjs'
@@ -49,18 +49,16 @@ function writePng(name, size) {
   return buf
 }
 
-// PNG sizes
-writePng('icon-16.png', 16)
-writePng('icon-32.png', 32)
-writePng('icon-48.png', 48)
-writePng('icon-64.png', 64)
-writePng('icon-128.png', 128)
-writePng('icon-256.png', 256)
+// Windows commonly requests 16/20/24/32px at 100–150% UI scale and
+// 32/40/48/64/80/96px variants at higher DPI. Supplying each exact bitmap
+// prevents the shell from applying a second, blurry interpolation pass.
+const iconSizes = [16, 20, 24, 32, 40, 48, 64, 80, 96, 128, 256]
+for (const size of iconSizes) writePng(`icon-${size}.png`, size)
 const buf512 = writePng('icon.png', 512)
 fs.copyFileSync(path.join(OUT_DIR, 'icon.png'), path.join(OUT_DIR, 'icon-512.png'))
 
 // ---- Build multi-size ICO ----
-const icoSizes = [16, 32, 48, 64, 128, 256]
+const icoSizes = iconSizes
 const pngs = icoSizes.map(s => ({ size: s, data: resize(src, s) }))
 
 function pngDimensions(buf) {
