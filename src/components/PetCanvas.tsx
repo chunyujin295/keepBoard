@@ -11,7 +11,7 @@ interface Props {
 
 const CHARS = '.,-~:;=!*#$@'
 /** Must match BORDER in electron/main.ts */
-const BORDER = 8
+const BORDER = 2
 
 /** dark-tone rainbow: 16 steps, hue rotates, low lightness */
 function hslCss(h: number, s: number, l: number): string {

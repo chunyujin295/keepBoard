@@ -22,14 +22,10 @@ export default function App() {
     return () => { offs.forEach(off => off?.()) }
   }, [])
 
-  const openMenu = (e: React.MouseEvent) => {
-    e.preventDefault()
-  }
-
   const size = Math.max(140, Math.min(640, Math.round(settings?.windowSize || 220)))
 
   return (
-    <div className="app-root" onContextMenu={openMenu}>
+    <div className="app-root">
       <PetCanvas size={size} overlayActive={panel !== null} shape={settings?.shape ?? 'donut'} />
 
       {panel === 'daily' && (

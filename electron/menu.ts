@@ -14,16 +14,37 @@ export interface MenuHandlers {
   onQuit: () => void
   onToggleAudio: (next: boolean) => void
   onOpacity: (v: number) => void
+  onShape: (shape: 'donut' | 'sphere') => void
+  onSize: (size: number) => void
 }
 
 export const OPACITY_LEVELS = [1, 0.75, 0.5, 0.25]
+const SIZE_LEVELS = [180, 240, 320, 400, 480, 640]
 
 export function buildTrayMenu(settings: Settings, h: MenuHandlers): Menu {
   const curOpacity = settings.opacity ?? 1
+  const curSize = settings.windowSize || 220
+  const curShape = settings.shape || 'donut'
   return Menu.buildFromTemplate([
     { label: '📊 今日统计', click: () => h.onShowDaily() },
     { label: '📈 本周统计', click: () => h.onShowWeekly() },
     { type: 'separator' },
+    {
+      label: '🧊 形状',
+      submenu: [
+        { label: '🍩 甜甜圈', type: 'radio', checked: curShape === 'donut', click: () => h.onShape('donut') },
+        { label: '🔵 球体', type: 'radio', checked: curShape === 'sphere', click: () => h.onShape('sphere') }
+      ]
+    },
+    {
+      label: '📐 尺寸',
+      submenu: SIZE_LEVELS.map((v) => ({
+        label: `${v}px`,
+        type: 'radio' as const,
+        checked: curSize === v,
+        click: () => h.onSize(v)
+      }))
+    },
     {
       label: '🌗 不透明度',
       submenu: OPACITY_LEVELS.map((v) => ({

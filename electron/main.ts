@@ -23,7 +23,7 @@ let dragging = false
 
 const isDev = process.env.NODE_ENV === 'development'
 /** Padding between canvas edge and window border (包围盒边距) */
-const BORDER = 8
+const BORDER = 2
 function winSize(): number {
   return Math.max(140, Math.min(640, Math.round(store?.getSettings().windowSize || 220))) + BORDER * 2
 }
@@ -224,6 +224,12 @@ const menuHandlers = {
   },
   onOpacity: (v: number) => {
     applySettingsPatch({ opacity: v })
+  },
+  onShape: (shape: 'donut' | 'sphere') => {
+    applySettingsPatch({ shape })
+  },
+  onSize: (size: number) => {
+    applySettingsPatch({ windowSize: size })
   }
 }
 
@@ -341,8 +347,8 @@ function registerIpc() {
     const next = {
       x: cur.x + Math.round(box.x - lastBox.x),
       y: cur.y + Math.round(box.y - lastBox.y),
-      width: Math.max(40, Math.min(480, Math.round(box.w))),
-      height: Math.max(40, Math.min(480, Math.round(box.h)))
+      width: Math.max(40, Math.round(box.w)),
+      height: Math.max(40, Math.round(box.h))
     }
     // Dedupe gate: never touch the OS window when nothing actually changes.
     if (rectsClose(next, cur)) return
@@ -367,69 +373,6 @@ function registerIpc() {
     const next = OPACITY_LEVELS[(idx + 1 + OPACITY_LEVELS.length) % OPACITY_LEVELS.length]
     applySettingsPatch({ opacity: next })
     return next
-  })
-
-  // Right-click context menu on the pet window
-  ipcMain.on('win:context-menu', () => {
-    if (!mainWindow || !store) return
-    const s = store.getSettings()
-    const curOpacity = s.opacity ?? 1
-    const curSize = s.windowSize || 220
-    const curShape = s.shape || 'donut'
-
-    const template: Electron.MenuItemConstructorOptions[] = [
-      {
-        label: '📊 今日统计',
-        click: () => mainWindow?.webContents.send('ui:open-panel', 'daily')
-      },
-      {
-        label: '📈 本周统计',
-        click: () => mainWindow?.webContents.send('ui:open-panel', 'weekly')
-      },
-      { type: 'separator' },
-      {
-        label: '🧊 形状',
-        submenu: [
-          { label: '🍩 甜甜圈', type: 'radio', checked: curShape === 'donut', click: () => applySettingsPatch({ shape: 'donut' }) },
-          { label: '🔵 球体', type: 'radio', checked: curShape === 'sphere', click: () => applySettingsPatch({ shape: 'sphere' }) }
-        ]
-      },
-      {
-        label: '📐 尺寸',
-        submenu: [180, 240, 320, 400, 480, 640].map((v) => ({
-          label: `${v}px`,
-          type: 'radio' as const,
-          checked: curSize === v,
-          click: () => applySettingsPatch({ windowSize: v })
-        }))
-      },
-      {
-        label: '🌗 不透明度',
-        submenu: OPACITY_LEVELS.map((v) => ({
-          label: `${Math.round(v * 100)}%`,
-          type: 'radio' as const,
-          checked: Math.abs(curOpacity - v) < 0.01,
-          click: () => applySettingsPatch({ opacity: v })
-        }))
-      },
-      { type: 'separator' },
-      {
-        label: s.alwaysOnTop ? '🔝 取消置顶' : '🔝 置顶窗口',
-        click: () => applySettingsPatch({ alwaysOnTop: !s.alwaysOnTop })
-      },
-      {
-        label: s.autoDock ? '🧲 取消吸附' : '🧲 自动吸附任务栏',
-        click: () => applySettingsPatch({ autoDock: !s.autoDock })
-      },
-      { type: 'separator' },
-      {
-        label: '❌ 退出',
-        click: () => app.quit()
-      }
-    ]
-
-    const menu = Menu.buildFromTemplate(template)
-    menu.popup({ window: mainWindow })
   })
 
   ipcMain.handle('app:open-path', (_e, p: string) => {

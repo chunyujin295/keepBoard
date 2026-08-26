@@ -14,7 +14,6 @@ const api = {
   setIgnoreMouseEvents: (ignore: boolean, options?: { forward: boolean }) =>
     ipcRenderer.send('win:set-ignore-mouse-events', ignore, options),
   cycleOpacity: (): Promise<number | undefined> => ipcRenderer.invoke('win:cycle-opacity'),
-  showContextMenu: (): void => ipcRenderer.send('win:context-menu'),
   quitApp: () => ipcRenderer.send('app:quit'),
 
 

@@ -5,7 +5,7 @@ import { logSize, rectsClose } from './sizeLog'
 export class WindowManager {
   private win: BrowserWindow
   private taskbar: TaskbarInfo
-  private readonly DOCK_MARGIN = 4
+  private readonly DOCK_MARGIN = 1
 
   constructor(win: BrowserWindow, taskbar: TaskbarInfo) {
     this.win = win
