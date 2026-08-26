@@ -4,6 +4,10 @@
 set -e
 cd "$(dirname "$0")/.."
 
+# electron-builder's own toolchain (NSIS / winCodeSign) downloads from GitHub by
+# default; route it through the same npmmirror mirror as the Electron binary.
+export ELECTRON_BUILDER_BINARIES_MIRROR=https://npmmirror.com/mirrors/electron-builder-binaries/
+
 echo "============================================"
 echo "  keepBoard - Build Linux Packages"
 echo "============================================"

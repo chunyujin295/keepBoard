@@ -3,6 +3,10 @@ setlocal
 cd /d "%~dp0.."
 title keepBoard Installer Builder
 
+rem electron-builder's own toolchain (NSIS / winCodeSign) downloads from GitHub
+rem by default; route it through the same npmmirror mirror as the Electron binary.
+set ELECTRON_BUILDER_BINARIES_MIRROR=https://npmmirror.com/mirrors/electron-builder-binaries/
+
 echo ============================================
 echo   keepBoard - Build Windows Installer
 echo ============================================

@@ -72,6 +72,19 @@ html, body, #root {
   word-break: break-all;
 }
 
+/* Dedicated stats window shell (the `#stats` route). The pet window keeps its
+ * own transparent background; this window renders a solid page so the panel
+ * fills the viewport instead of clipping to the pet's square. */
+.stats-shell {
+  width: 100%;
+  min-height: 100vh;
+  background: #1A1C2C;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 16px;
+}
+
 .panel-mask {
   position: fixed;
   left: 0; top: 0;
@@ -96,7 +109,7 @@ html, body, #root {
   padding: 8px;
   font-size: 9px;
   line-height: 1.8;
-  max-height: 70vh;
+  max-height: calc(100vh - 32px);
   overflow: auto;
 }
 .panel.wide { width: 320px; }

@@ -37,6 +37,7 @@ const api = {
 
   getDaily: (): Promise<DailyStats> => ipcRenderer.invoke('stats:daily'),
   getWeekly: (): Promise<WeeklyStats> => ipcRenderer.invoke('stats:weekly'),
+  closeStats: (): void => ipcRenderer.send('stats:close'),
   getWeeklyAt: (offset = 0): Promise<WeeklyStats> => ipcRenderer.invoke('stats:weekly-at', offset),
   exportWeekCsv: (offset = 0): Promise<string | null> => ipcRenderer.invoke('stats:export-week-csv', offset),
   getRecentWeeks: (n = 4): Promise<WeeklyStats[]> => ipcRenderer.invoke('stats:recent-weeks', n),
@@ -49,11 +50,6 @@ const api = {
     const h = (_e: any, d: any) => cb(d)
     ipcRenderer.on('stats:event', h)
     return () => ipcRenderer.off('stats:event', h)
-  },
-  onOpenPanel: (cb: (id: 'daily' | 'weekly' | 'settings') => void) => {
-    const h = (_e: any, id: any) => cb(id)
-    ipcRenderer.on('ui:open-panel', h)
-    return () => ipcRenderer.off('ui:open-panel', h)
   },
 
   reportWebKey: (code: string) => ipcRenderer.send('stats:key-via-web', code),

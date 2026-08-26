@@ -13,6 +13,7 @@ import { todayKey, weeklyToCsv } from './statsUtils'
 import { logSize, getSizeLog } from './sizeLog'
 
 let mainWindow: BrowserWindow | null = null
+let statsWindow: BrowserWindow | null = null
 let winMgr: WindowManager | null = null
 let tray: Tray | null = null
 let store: AppStore | null = null
@@ -181,6 +182,57 @@ function createWindow() {
   })
 }
 
+/** The stats panels are a SEPARATE window: they are wider than the pet window
+ *  (daily 260px, weekly 320px vs a 140–640px square), and the pet window is
+ *  pinned to its size with min==max — putting the panel inside it clipped it to
+ *  the pet's width and covered the donut. A dedicated window sidesteps both. */
+function loadStats(win: BrowserWindow, panel: 'daily' | 'weekly') {
+  if (isDev) {
+    win.loadURL(`http://localhost:5173/?panel=${panel}#stats`).catch(() => { })
+  } else {
+    win.loadFile(path.join(__dirname, '../dist/index.html'), { query: { panel }, hash: 'stats' })
+  }
+}
+
+function openStatsWindow(panel: 'daily' | 'weekly') {
+  if (statsWindow && !statsWindow.isDestroyed()) {
+    loadStats(statsWindow, panel)
+    statsWindow.show()
+    statsWindow.focus()
+    return
+  }
+  const W = panel === 'weekly' ? 340 : 280
+  statsWindow = new BrowserWindow({
+    width: W,
+    height: 520,
+    frame: true,
+    resizable: true,
+    maximizable: false,
+    minimizable: true,
+    alwaysOnTop: true,
+    skipTaskbar: false,
+    show: false,
+    autoHideMenuBar: true,
+    backgroundColor: '#1A1C2C',
+    icon: windowIcon(),
+    title: panel === 'weekly' ? 'keepBoard · 本周统计' : 'keepBoard · 今日统计',
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: false
+    }
+  })
+  statsWindow.setMenuBarVisibility(false)
+  loadStats(statsWindow, panel)
+  statsWindow.once('ready-to-show', () => statsWindow?.show())
+  statsWindow.on('closed', () => { statsWindow = null })
+}
+
+function closeStatsWindow() {
+  if (statsWindow && !statsWindow.isDestroyed()) statsWindow.close()
+}
+
 function iconBase(): string {
   // Dev: committed resource at assets/icons. Packaged: extraResources copies
   // assets/icons/* into resources/build/ (see package.json extraResources).
@@ -221,8 +273,8 @@ const menuHandlers = {
     mainWindow?.setAlwaysOnTop(next, next ? 'screen-saver' : 'normal')
     pushSettings()
   },
-  onShowDaily: () => { mainWindow?.webContents.send('ui:open-panel', 'daily') },
-  onShowWeekly: () => { mainWindow?.webContents.send('ui:open-panel', 'weekly') },
+  onShowDaily: () => openStatsWindow('daily'),
+  onShowWeekly: () => openStatsWindow('weekly'),
   onRedock: () => winMgr?.dockToTaskbar(),
   onQuit: () => app.quit(),
   onToggleAudio: (next: boolean) => {
@@ -391,6 +443,7 @@ function registerIpc() {
     return store?.getWeekly(ref)
   })
   ipcMain.handle('stats:recent-weeks', (_e, n = 4): WeeklyStats[] => store?.getLastNWeeks(n) ?? [])
+  ipcMain.on('stats:close', () => closeStatsWindow())
   ipcMain.handle('hooks:status', () => ({ native: hooker?.nativeActive ?? false, events: hooker?.nativeEventCount ?? 0 }))
   ipcMain.handle('debug:size-log', () => getSizeLog())
   ipcMain.handle('app:version', () => app.getVersion())

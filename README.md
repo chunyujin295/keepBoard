@@ -22,7 +22,7 @@
 | 🖥 屏幕时间 | 30s 空闲判定，自动累计有效使用时长 |
 | 🎨 右键菜单 | 纯右键交互：形状切换、尺寸调节、配色（含多套自定义外观）、字符集、光晕、背景、随机转向、不透明度、置顶/吸附开关、统计入口、退出 |
 | 🧲 任务栏吸附 | 自动检测任务栏位置（上/下/左/右），拖动松手后自动吸附 |
-| 🔝 窗口特性 | 无边框透明窗口、始终置顶、不占任务栏 |
+| 🔝 窗口特性 | 宠物为无边框透明置顶窗口、不占任务栏；统计面板为独立置顶窗口（可调大小、占任务栏） |
 | 🚀 开机自启 | 一键开关，写入系统登录项 |
 
 ## 📦 环境要求
@@ -121,7 +121,7 @@ npm run package:linux    # Linux：AppImage + deb
   - 🌗 不透明度 / 🔝 置顶开关 / 🧲 吸附开关
   - ❌ 退出
 - **托盘**：左键唤起窗口，右键弹出托盘菜单
-- **数据目录**：托盘菜单 → 「📂 数据目录」。Windows 在 `%APPDATA%\keepboard`，Linux 在 `~/.config/keepboard`（自动清理 180 天前的日数据）
+- **数据目录**：Windows 在 `%APPDATA%\keepboard`，Linux 在 `~/.config/keepboard`（含 `keepboard-store.json` 统计数据与 `keepboard-look.json` 外观配置；日数据自动清理 180 天前的）
 
 ### 🎨 自定义外观（keepboard-look.json）
 
@@ -180,6 +180,10 @@ keepBoard/
 │   ├── windowManager.ts # 任务栏吸附逻辑
 │   └── menu.ts          # 托盘菜单、开机自启
 ├── src/                 # 渲染进程 (React)
+│   ├── main.tsx             # 入口：按 hash 分流宠物窗口(#无) / 统计窗口(#stats)
+│   ├── App.tsx              # 宠物窗口根组件
+│   ├── StatsApp.tsx         # 统计窗口根组件（独立窗口渲染今日/本周面板）
+│   ├── index.css            # 全局样式（含 .stats-shell 统计窗口壳）
 │   ├── components/
 │   │   ├── PetCanvas.tsx    # 3D 字符画渲染（甜甜圈/地球仪）+ 像素级鼠标穿透
 │   │   ├── DailyPanel.tsx   # 今日统计面板
