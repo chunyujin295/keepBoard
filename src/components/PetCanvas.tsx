@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { DailyStats, LookDef, Settings } from '@/lib/types'
 import { WebGLGlyphRenderer, type GlyphInstance } from '@/lib/webglGlyphRenderer'
+import { ghostAudio } from '@/lib/ghostAudio'
 
 interface Props {
   /** window edge length in px (square window) */
@@ -29,6 +30,10 @@ interface Props {
   density?: Settings['density']
   /** Add a small left/right wobble to click feedback. */
   jitter?: boolean
+  /** Enable the procedural "cosmic ghost" input sounds. */
+  audioEnabled?: boolean
+  /** Master volume for the ghost sounds (0–1). */
+  volume?: number
 }
 
 /** Character-set ramps. These are a separate toggle from the colour look
@@ -350,7 +355,7 @@ const MOTION_MS: Record<NonNullable<Settings['motionPreset']>, number> = {
   long: 900
 }
 
-export default function PetCanvas({ size, overlayActive, shape = 'donut', dark = true, look = 'classic', customLook, charset = 'ascii', glow = false, randomSpin = false, motionPreset = 'medium', density = 'normal', jitter = true }: Props) {
+export default function PetCanvas({ size, overlayActive, shape = 'donut', dark = true, look = 'classic', customLook, charset = 'ascii', glow = false, randomSpin = false, motionPreset = 'medium', density = 'normal', jitter = true, audioEnabled = false, volume = 0.5 }: Props) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const rafRef = useRef(0)
   const idleTimerRef = useRef<number | null>(null)
@@ -411,6 +416,7 @@ export default function PetCanvas({ size, overlayActive, shape = 'donut', dark =
         impulseTimerRef.current = null
       }, motionMs)
     }
+    ghostAudio.note(kind)
     wakeAnimationRef.current()
   }
 
@@ -443,6 +449,16 @@ export default function PetCanvas({ size, overlayActive, shape = 'donut', dark =
       setCelebration('')
     }
   }, [motionPreset])
+
+  // Ghost sounds are toggled independently of motion — mirror the settings
+  // into the audio engine so typing/clicking can play even with motion off.
+  useEffect(() => {
+    ghostAudio.setEnabled(!!audioEnabled)
+  }, [audioEnabled])
+
+  useEffect(() => {
+    ghostAudio.setVolume(volume ?? 0.4)
+  }, [volume])
 
   useEffect(() => {
     const onMove = (e: MouseEvent) => {

@@ -127,7 +127,11 @@ function createWindow() {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: false
+      sandbox: false,
+      // Ghost sounds are triggered by the GLOBAL input hook, which arrives via
+      // IPC rather than a user gesture inside the page — so autoplay must be
+      // allowed or the AudioContext would stay suspended.
+      autoplayPolicy: 'no-user-gesture-required'
     }
   })
   mainWindow.setMinimumSize(S, S)
@@ -287,6 +291,9 @@ const menuHandlers = {
   onQuit: () => app.quit(),
   onToggleAudio: (next: boolean) => {
     applySettingsPatch({ audioEnabled: next })
+  },
+  onVolume: (v: number) => {
+    applySettingsPatch({ volume: v })
   },
   onOpacity: (v: number) => {
     applySettingsPatch({ opacity: v })

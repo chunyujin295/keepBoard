@@ -13,6 +13,7 @@ export interface MenuHandlers {
   onRedock: () => void
   onQuit: () => void
   onToggleAudio: (next: boolean) => void
+  onVolume: (v: number) => void
   onOpacity: (v: number) => void
   onShape: (shape: Settings['shape']) => void
   onSize: (size: number) => void
@@ -67,10 +68,12 @@ const LOOK_PRESETS: { id: string; label: string }[] = [
 ]
 
 export const OPACITY_LEVELS = [1, 0.75, 0.5, 0.25]
+const VOLUME_LEVELS = [1, 0.75, 0.5, 0.25]
 const SIZE_LEVELS = [180, 240, 320, 400, 480, 640]
 
 export function buildTrayMenu(settings: Settings, h: MenuHandlers, customLooks: CustomLook[] = []): Menu {
   const curOpacity = settings.opacity ?? 1
+  const curVolume = settings.volume ?? 0.5
   const curSize = settings.windowSize || 220
   const curShape = settings.shape || 'donut'
   const curMotion = settings.motionPreset ?? (settings.motionEffects === false ? 'off' : 'medium')
@@ -217,6 +220,15 @@ export function buildTrayMenu(settings: Settings, h: MenuHandlers, customLooks: 
       type: 'checkbox',
       checked: settings.audioEnabled,
       click: (m) => h.onToggleAudio(m.checked)
+    },
+    {
+      label: '🔉 音量',
+      submenu: VOLUME_LEVELS.map((v) => ({
+        label: `${Math.round(v * 100)}%`,
+        type: 'radio' as const,
+        checked: Math.abs(curVolume - v) < 0.01,
+        click: () => h.onVolume(v)
+      }))
     },
     { label: '📌 立即重新吸附', click: () => h.onRedock() },
     { type: 'separator' },

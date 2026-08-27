@@ -63,7 +63,7 @@ export const DEFAULT_SETTINGS: Settings = {
   autoDock: true,
   alwaysOnTop: true,
   audioEnabled: false,
-  volume: 0.4,
+  volume: 0.5,
   dockEdge: 'auto',
   opacity: 1,
   theme: 'dark',

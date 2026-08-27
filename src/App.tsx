@@ -47,6 +47,8 @@ export default function App() {
         motionPreset={settings?.motionPreset ?? (settings?.motionEffects === false ? 'off' : 'medium')}
         density={settings?.density ?? 'normal'}
         jitter={settings?.jitter !== false}
+        audioEnabled={settings?.audioEnabled === true}
+        volume={settings?.volume ?? 0.5}
       />
     </div>
   )
