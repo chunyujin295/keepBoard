@@ -196,20 +196,23 @@ npm run package:linux    # Linux：AppImage + deb
 ### 🔧推荐的配置（v0.13.0)
 
 <p align="center">
-  <img src="./docs/img/1.png" alt="keepBoard icon" >
+  <img src="./docs/img/1.png" alt="keepBoard icon" width ="400"> 
+</p>
+
+
+
+<p align="center">
+  <img src="./docs/img/2.png" alt="keepBoard icon" width ="400">
 </p>
 
 <p align="center">
-  <img src="./docs/img/2.png" alt="keepBoard icon" >
+  <img src="./docs/img/3.png" alt="keepBoard icon" width ="400">
 </p>
 
 <p align="center">
-  <img src="./docs/img/3.png" alt="keepBoard icon" >
+  <img src="./docs/img/4.png" alt="keepBoard icon" width ="400">
 </p>
 
-<p align="center">
-  <img src="./docs/img/4.png" alt="keepBoard icon" >
-</p>
 
 ## 📁 项目结构
 
