@@ -216,7 +216,7 @@ export function buildTrayMenu(settings: Settings, h: MenuHandlers, customLooks: 
       click: (m) => h.onToggleAutoStart(m.checked)
     },
     {
-      label: '🔊 音效反馈',
+      label: '👽 音效反馈',
       type: 'checkbox',
       checked: settings.audioEnabled,
       click: (m) => h.onToggleAudio(m.checked)
