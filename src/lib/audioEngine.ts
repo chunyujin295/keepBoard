@@ -163,8 +163,8 @@ const THEMES: Record<Exclude<AudioTheme, 'none'>, Theme> = {
     vibratoDepth: 0,
     vibratoRate: 0,
     clickOct: 0,
-    clickDur: 0.22,
-    clickDrop: 0.9,
+    clickDur: 0.45,
+    clickDrop: 1.0,
     wheelSweepMin: 400,
     wheelSweepMax: 900,
     breath: false,
@@ -304,7 +304,7 @@ class AudioEngine {
     const f0 = midiToFreq(randOf(th.roots) + th.clickOct + randOf(th.scale))
     const f1 = f0 * th.clickDrop
     const wave = th.waves ? randOf(th.waves) : th.wave
-    if (th.organ) this.organ(f0, f1, 0, th.clickDur, 0.32, 0.08, 0)
+    if (th.organ) this.organ(f0, f1, 0, th.clickDur, 0.26, 0.18, 0)
     else this.voice(wave, f0, f1, 0, th.clickDur, 0.3, 0)
     if (th.breath) this.breath(1400, 700, 0.09, 0.06)
   }
