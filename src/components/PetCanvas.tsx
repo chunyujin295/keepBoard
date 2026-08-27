@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { DailyStats, LookDef, Settings } from '@/lib/types'
 import { WebGLGlyphRenderer, type GlyphInstance } from '@/lib/webglGlyphRenderer'
-import { ghostAudio } from '@/lib/ghostAudio'
+import { audioEngine, type AudioTheme } from '@/lib/audioEngine'
 
 interface Props {
   /** window edge length in px (square window) */
@@ -30,9 +30,9 @@ interface Props {
   density?: Settings['density']
   /** Add a small left/right wobble to click feedback. */
   jitter?: boolean
-  /** Enable the procedural "cosmic ghost" input sounds. */
-  audioEnabled?: boolean
-  /** Master volume for the ghost sounds (0–1). */
+  /** Sound theme — 'none' disables input sounds. */
+  audioTheme?: AudioTheme
+  /** Master volume for the input sounds (0–1). */
   volume?: number
 }
 
@@ -355,7 +355,7 @@ const MOTION_MS: Record<NonNullable<Settings['motionPreset']>, number> = {
   long: 900
 }
 
-export default function PetCanvas({ size, overlayActive, shape = 'donut', dark = true, look = 'classic', customLook, charset = 'ascii', glow = false, randomSpin = false, motionPreset = 'medium', density = 'normal', jitter = true, audioEnabled = false, volume = 0.5 }: Props) {
+export default function PetCanvas({ size, overlayActive, shape = 'donut', dark = true, look = 'classic', customLook, charset = 'ascii', glow = false, randomSpin = false, motionPreset = 'medium', density = 'normal', jitter = true, audioTheme = 'none', volume = 0.5 }: Props) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const rafRef = useRef(0)
   const idleTimerRef = useRef<number | null>(null)
@@ -416,7 +416,7 @@ export default function PetCanvas({ size, overlayActive, shape = 'donut', dark =
         impulseTimerRef.current = null
       }, motionMs)
     }
-    ghostAudio.note(kind)
+    audioEngine.note(kind, impulseRef.current.combo)
     wakeAnimationRef.current()
   }
 
@@ -450,14 +450,14 @@ export default function PetCanvas({ size, overlayActive, shape = 'donut', dark =
     }
   }, [motionPreset])
 
-  // Ghost sounds are toggled independently of motion — mirror the settings
-  // into the audio engine so typing/clicking can play even with motion off.
+  // Sounds are independent of motion — mirror the settings into the audio
+  // engine so typing/clicking can play even with motion off.
   useEffect(() => {
-    ghostAudio.setEnabled(!!audioEnabled)
-  }, [audioEnabled])
+    audioEngine.setTheme(audioTheme)
+  }, [audioTheme])
 
   useEffect(() => {
-    ghostAudio.setVolume(volume ?? 0.4)
+    audioEngine.setVolume(volume ?? 0.5)
   }, [volume])
 
   useEffect(() => {
@@ -586,6 +586,7 @@ export default function PetCanvas({ size, overlayActive, shape = 'donut', dark =
       setCelebration(`${bucket * 1000}`)
       impulseRef.current.combo = 1
       triggerKick(1.2, 'key')
+      audioEngine.celebrate()
       if (celebrationTimerRef.current !== null) window.clearTimeout(celebrationTimerRef.current)
       celebrationTimerRef.current = window.setTimeout(() => {
         setCelebration('')

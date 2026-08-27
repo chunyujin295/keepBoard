@@ -289,8 +289,8 @@ const menuHandlers = {
   onShowWeekly: () => openStatsWindow('weekly'),
   onRedock: () => winMgr?.dockToTaskbar(),
   onQuit: () => app.quit(),
-  onToggleAudio: (next: boolean) => {
-    applySettingsPatch({ audioEnabled: next })
+  onAudioTheme: (audioTheme: Settings['audioTheme']) => {
+    applySettingsPatch({ audioTheme, audioEnabled: audioTheme !== 'none' })
   },
   onVolume: (v: number) => {
     applySettingsPatch({ volume: v })

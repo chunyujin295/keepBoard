@@ -26,6 +26,13 @@ function normalizeSettings(raw: Partial<Settings> | undefined): Settings {
   }
   settings.motionEffects = settings.motionPreset !== 'off'
   settings.jitter = settings.motionPreset !== 'off' && settings.jitter !== false
+  // audioTheme migration: an old `audioEnabled: true` boolean maps to the
+  // default ghost theme; an invalid/absent theme id falls back to 'none'.
+  const rawAudioTheme = (raw as Record<string, unknown> | undefined)?.audioTheme
+  const validTheme = rawAudioTheme === 'none' || rawAudioTheme === 'ghost' || rawAudioTheme === 'robot' || rawAudioTheme === '8bit' || rawAudioTheme === 'droplet'
+  if (!validTheme) {
+    settings.audioTheme = raw?.audioEnabled === true ? 'ghost' : 'none'
+  }
   return settings
 }
 

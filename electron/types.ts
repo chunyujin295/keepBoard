@@ -4,7 +4,10 @@ export interface Settings {
   autoStart: boolean
   autoDock: boolean
   alwaysOnTop: boolean
+  /** @deprecated Use audioTheme; kept to migrate old settings files. */
   audioEnabled: boolean
+  /** Sound theme id — 'none' disables, otherwise picks the synthesis voice. */
+  audioTheme: 'none' | 'ghost' | 'robot' | '8bit' | 'droplet'
   volume: number
   dockEdge: 'auto' | 'top' | 'bottom' | 'left' | 'right'
   opacity: number
@@ -63,6 +66,7 @@ export const DEFAULT_SETTINGS: Settings = {
   autoDock: true,
   alwaysOnTop: true,
   audioEnabled: false,
+  audioTheme: 'none',
   volume: 0.5,
   dockEdge: 'auto',
   opacity: 1,

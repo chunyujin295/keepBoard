@@ -5,6 +5,7 @@ export interface Settings {
   autoDock: boolean
   alwaysOnTop: boolean
   audioEnabled: boolean
+  audioTheme: 'none' | 'ghost' | 'robot' | '8bit' | 'droplet'
   volume: number
   dockEdge: 'auto' | 'top' | 'bottom' | 'left' | 'right'
   opacity: number

@@ -12,7 +12,7 @@ export interface MenuHandlers {
   onShowWeekly: () => void
   onRedock: () => void
   onQuit: () => void
-  onToggleAudio: (next: boolean) => void
+  onAudioTheme: (theme: Settings['audioTheme']) => void
   onVolume: (v: number) => void
   onOpacity: (v: number) => void
   onShape: (shape: Settings['shape']) => void
@@ -71,9 +71,19 @@ export const OPACITY_LEVELS = [1, 0.75, 0.5, 0.25]
 const VOLUME_LEVELS = [1, 0.75, 0.5, 0.25]
 const SIZE_LEVELS = [180, 240, 320, 400, 480, 640]
 
+// Sound themes — 'none' sits at the top and disables audio.
+const AUDIO_THEME_LEVELS: { id: Settings['audioTheme']; label: string }[] = [
+  { id: 'none', label: '🔇 不启用音效' },
+  { id: 'ghost', label: '👻 宇宙幽灵' },
+  { id: 'robot', label: '🤖 机器人' },
+  { id: '8bit', label: '👾 8-bit 芯片' },
+  { id: 'droplet', label: '💧 水滴' }
+]
+
 export function buildTrayMenu(settings: Settings, h: MenuHandlers, customLooks: CustomLook[] = []): Menu {
   const curOpacity = settings.opacity ?? 1
   const curVolume = settings.volume ?? 0.5
+  const curAudioTheme = settings.audioTheme ?? (settings.audioEnabled ? 'ghost' : 'none')
   const curSize = settings.windowSize || 220
   const curShape = settings.shape || 'donut'
   const curMotion = settings.motionPreset ?? (settings.motionEffects === false ? 'off' : 'medium')
@@ -216,10 +226,13 @@ export function buildTrayMenu(settings: Settings, h: MenuHandlers, customLooks: 
       click: (m) => h.onToggleAutoStart(m.checked)
     },
     {
-      label: '👽 音效反馈',
-      type: 'checkbox',
-      checked: settings.audioEnabled,
-      click: (m) => h.onToggleAudio(m.checked)
+      label: '👽 音效主题',
+      submenu: AUDIO_THEME_LEVELS.map((a) => ({
+        label: a.label,
+        type: 'radio' as const,
+        checked: curAudioTheme === a.id,
+        click: () => h.onAudioTheme(a.id)
+      }))
     },
     {
       label: '🔉 音量',
