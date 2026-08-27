@@ -37,8 +37,7 @@ interface Theme {
   breath: boolean
   harmony: boolean
   echo: boolean
-  vowel: boolean
-  formants?: [number, number]
+  organ: boolean
 }
 
 const THEMES: Record<Exclude<AudioTheme, 'none'>, Theme> = {
@@ -67,7 +66,7 @@ const THEMES: Record<Exclude<AudioTheme, 'none'>, Theme> = {
     breath: true,
     harmony: false,
     echo: true,
-    vowel: false
+    organ: false
   },
   robot: {
     id: 'robot',
@@ -93,7 +92,7 @@ const THEMES: Record<Exclude<AudioTheme, 'none'>, Theme> = {
     breath: false,
     harmony: false,
     echo: false,
-    vowel: false
+    organ: false
   },
   '8bit': {
     id: '8bit',
@@ -119,7 +118,7 @@ const THEMES: Record<Exclude<AudioTheme, 'none'>, Theme> = {
     breath: false,
     harmony: false,
     echo: false,
-    vowel: false
+    organ: false
   },
   droplet: {
     id: 'droplet',
@@ -145,24 +144,24 @@ const THEMES: Record<Exclude<AudioTheme, 'none'>, Theme> = {
     breath: false,
     harmony: false,
     echo: true,
-    vowel: false
+    organ: false
   },
   choir: {
     id: 'choir',
-    label: '圣歌人声',
-    icon: '😇',
+    label: '圣歌管风琴',
+    icon: '⛪',
     scale: [0, 2, 4, 7, 9],
     roots: [52, 57, 64],
     octSpread: 0,
     intensityBoost: 12,
-    wave: 'sawtooth',
-    keyDurMin: 0.5,
-    keyDurMax: 0.9,
-    attack: 0.1,
+    wave: 'sine',
+    keyDurMin: 0.6,
+    keyDurMax: 1.0,
+    attack: 0.06,
     glide: false,
-    vibrato: true,
-    vibratoDepth: 0.03,
-    vibratoRate: 4.5,
+    vibrato: false,
+    vibratoDepth: 0,
+    vibratoRate: 0,
     clickOct: 12,
     clickDur: 0.18,
     clickDrop: 0.9,
@@ -171,8 +170,7 @@ const THEMES: Record<Exclude<AudioTheme, 'none'>, Theme> = {
     breath: false,
     harmony: false,
     echo: true,
-    vowel: true,
-    formants: [730, 1090]
+    organ: true
   }
 }
 
@@ -281,7 +279,7 @@ class AudioEngine {
     // A quick rising arpeggio over the theme's scale — the milestone chorus.
     th.scale.slice(0, 4).forEach((step, i) => {
       const f = midiToFreq(th.roots[0] + step + 12)
-      if (th.vowel) this.vowel(f, f, t + i * 0.08, 0.2, 0.3, 0.03, 0)
+      if (th.organ) this.organ(f, f, t + i * 0.08, 0.2, 0.3, 0.03, 0)
       else this.voice(th.wave, f, f, t + i * 0.08, 0.16, 0.3, 0)
     })
   }
@@ -295,7 +293,7 @@ class AudioEngine {
     const f1 = th.glide ? f0 * (Math.random() < 0.5 ? 1.06 : 0.94) : f0
     const dur = th.keyDurMin + Math.random() * (th.keyDurMax - th.keyDurMin)
     const wave = th.waves ? randOf(th.waves) : th.wave
-    if (th.vowel) this.vowel(f0, f1, 0, dur, 0.4, th.attack, th.vibrato ? th.vibratoRate : 0)
+    if (th.organ) this.organ(f0, f1, 0, dur, 0.4, th.attack, th.vibrato ? th.vibratoRate : 0)
     else this.voice(wave, f0, f1, 0, dur, 0.4, th.vibrato ? th.vibratoDepth : 0, th.vibrato ? th.vibratoRate : 0)
     if (th.harmony) this.voice(th.wave, f0 * 1.5, f0 * 1.5, 0.01, dur * 0.7, 0.16, 0)
     if (th.breath) this.breath(900, 300, dur * 0.7, 0.14)
@@ -306,7 +304,7 @@ class AudioEngine {
     const f0 = midiToFreq(randOf(th.roots) + th.clickOct + randOf(th.scale))
     const f1 = f0 * th.clickDrop
     const wave = th.waves ? randOf(th.waves) : th.wave
-    if (th.vowel) this.vowel(f0, f1, 0, th.clickDur, 0.35, 0.02, 0)
+    if (th.organ) this.organ(f0, f1, 0, th.clickDur, 0.35, 0.02, 0)
     else this.voice(wave, f0, f1, 0, th.clickDur, 0.3, 0)
     if (th.breath) this.breath(1400, 700, 0.09, 0.06)
   }
@@ -316,7 +314,7 @@ class AudioEngine {
     const up = Math.random() < 0.5
     const f0 = up ? th.wheelSweepMin : th.wheelSweepMax
     const f1 = up ? th.wheelSweepMax : th.wheelSweepMin
-    if (th.vowel) this.vowel(f0, f1, 0, 0.28, 0.35, 0.03, 0)
+    if (th.organ) this.organ(f0, f1, 0, 0.28, 0.35, 0.03, 0)
     else this.voice(th.wave, f0, f1, 0, 0.28, 0.35, 0)
     if (th.breath) this.breath(up ? 800 : 500, up ? 1500 : 250, 0.28, 0.1)
   }
@@ -354,64 +352,49 @@ class AudioEngine {
     osc.stop(t + dur + 0.5)
   }
 
-  /** Human-vowel ("ah") voice: two slightly detuned saw carriers pass through
-   *  two band-pass formants and a little dry blend, so it keeps the note pitch
-   *  while reading as a sung vowel — short = "啊", sustained = choir. */
-  private vowel(f0: number, f1: number, at: number, dur: number, level: number, attack: number, vibRate = 0) {
+  /** Church pipe-organ voice: additive synthesis with pure sine partials
+   *  (1f, 2f, 3f, 4f, 6f) whose amplitudes fall off with the partial number —
+   *  the classic "stopped diapason" hollow timbre. A slow tremolo (amplitude
+   *  wobble) gives it the floating, ethereal cathedral air. */
+  private organ(f0: number, f1: number, at: number, dur: number, level: number, attack: number, vibRate = 0) {
     const ctx = this.ctx!
     const t = ctx.currentTime + at
-    const [F1, F2] = THEMES[this.theme].formants ?? [730, 1090]
-
-    const mk = (det: number) => {
-      const o = ctx.createOscillator()
-      o.type = 'sawtooth'
-      o.frequency.setValueAtTime(Math.max(1, f0), t)
-      o.detune.value = det
-      if (f1 !== f0) o.frequency.exponentialRampToValueAtTime(Math.max(1, f1), t + dur)
-      return o
-    }
-    const o1 = mk(-6)
-    const o2 = mk(6)
-
-    const bp1 = ctx.createBiquadFilter()
-    bp1.type = 'bandpass'
-    bp1.frequency.value = F1
-    bp1.Q.value = 3
-    const bp2 = ctx.createBiquadFilter()
-    bp2.type = 'bandpass'
-    bp2.frequency.value = F2
-    bp2.Q.value = 4
-    const g2 = ctx.createGain()
-    g2.gain.value = 0.7
-    const dry = ctx.createGain()
-    dry.gain.value = 0.12
-    const sum = ctx.createGain()
-
-    o1.connect(bp1); o2.connect(bp1); bp1.connect(sum)
-    o1.connect(bp2); o2.connect(bp2); bp2.connect(g2); g2.connect(sum)
-    o1.connect(dry); o2.connect(dry); dry.connect(sum)
+    // [harmonic number, relative amplitude] — 1f dominates, higher partials thin out.
+    const PARTIALS: [number, number][] = [[1, 1], [2, 0.5], [3, 0.33], [4, 0.2], [6, 0.12]]
 
     const env = ctx.createGain()
     env.gain.setValueAtTime(0, t)
     env.gain.linearRampToValueAtTime(level, t + attack)
     env.gain.exponentialRampToValueAtTime(0.0001, t + dur + 0.4)
-    sum.connect(env)
 
+    // Slow tremolo — amplitude wobble, the "floating" cathedral shimmer.
+    let trem: OscillatorNode | null = null
+    let tremGain: GainNode | null = null
     if (vibRate > 0) {
-      const lfo = ctx.createOscillator()
-      lfo.frequency.value = vibRate
-      const lfoGain = ctx.createGain()
-      lfoGain.gain.value = f0 * 0.03
-      lfo.connect(lfoGain)
-      lfoGain.connect(o1.frequency)
-      lfoGain.connect(o2.frequency)
-      lfo.start(t)
-      lfo.stop(t + dur + 0.5)
+      trem = ctx.createOscillator()
+      trem.frequency.value = vibRate
+      tremGain = ctx.createGain()
+      tremGain.gain.value = level * 0.15
+      trem.connect(tremGain)
+      tremGain.connect(env.gain)
+      trem.start(t)
+      trem.stop(t + dur + 0.5)
+    }
+
+    for (const [n, amp] of PARTIALS) {
+      const o = ctx.createOscillator()
+      o.type = 'sine'
+      o.frequency.setValueAtTime(Math.max(1, f0 * n), t)
+      if (f1 !== f0) o.frequency.exponentialRampToValueAtTime(Math.max(1, f1 * n), t + dur)
+      const g = ctx.createGain()
+      g.gain.value = amp
+      o.connect(g)
+      g.connect(env)
+      o.start(t)
+      o.stop(t + dur + 0.5)
     }
 
     this.route(env)
-    o1.start(t); o2.start(t)
-    o1.stop(t + dur + 0.5); o2.stop(t + dur + 0.5)
   }
 
   /** Route a node to the master with random stereo pan and optional echo. */

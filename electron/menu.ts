@@ -78,7 +78,7 @@ const AUDIO_THEME_LEVELS: { id: Settings['audioTheme']; label: string }[] = [
   { id: 'robot', label: '🤖 机器人' },
   { id: '8bit', label: '👾 8-bit 芯片' },
   { id: 'droplet', label: '💧 水滴' },
-  { id: 'choir', label: '😇 圣歌人声' }
+  { id: 'choir', label: '⛪ 圣歌管风琴' }
 ]
 
 export function buildTrayMenu(settings: Settings, h: MenuHandlers, customLooks: CustomLook[] = []): Menu {
