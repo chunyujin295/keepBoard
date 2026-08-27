@@ -29,7 +29,7 @@ function normalizeSettings(raw: Partial<Settings> | undefined): Settings {
   // audioTheme migration: an old `audioEnabled: true` boolean maps to the
   // default ghost theme; an invalid/absent theme id falls back to 'none'.
   const rawAudioTheme = (raw as Record<string, unknown> | undefined)?.audioTheme
-  const validTheme = rawAudioTheme === 'none' || rawAudioTheme === 'ghost' || rawAudioTheme === 'robot' || rawAudioTheme === '8bit' || rawAudioTheme === 'droplet'
+  const validTheme = rawAudioTheme === 'none' || rawAudioTheme === 'ghost' || rawAudioTheme === 'robot' || rawAudioTheme === '8bit' || rawAudioTheme === 'droplet' || rawAudioTheme === 'choir'
   if (!validTheme) {
     settings.audioTheme = raw?.audioEnabled === true ? 'ghost' : 'none'
   }

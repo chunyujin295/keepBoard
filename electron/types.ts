@@ -7,7 +7,7 @@ export interface Settings {
   /** @deprecated Use audioTheme; kept to migrate old settings files. */
   audioEnabled: boolean
   /** Sound theme id — 'none' disables, otherwise picks the synthesis voice. */
-  audioTheme: 'none' | 'ghost' | 'robot' | '8bit' | 'droplet'
+  audioTheme: 'none' | 'ghost' | 'robot' | '8bit' | 'droplet' | 'choir'
   volume: number
   dockEdge: 'auto' | 'top' | 'bottom' | 'left' | 'right'
   opacity: number
