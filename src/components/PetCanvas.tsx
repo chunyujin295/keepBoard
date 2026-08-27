@@ -1228,7 +1228,6 @@ export default function PetCanvas({ size, overlayActive, shape = 'donut', dark =
           userSelect: 'none',
           touchAction: 'none'
         }}
-        title="左键拖动 · 打字让它转起来"
         onMouseDown={startDrag}
         aria-label="keepBoard 3D 甜甜圈"
       />
