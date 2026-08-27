@@ -21,6 +21,9 @@ export interface MenuHandlers {
   onCharset: (c: 'ascii' | 'block' | 'dot' | 'line') => void
   onGlow: (next: boolean) => void
   onToggleRandomSpin: (next: boolean) => void
+  onMotionPreset: (preset: Settings['motionPreset']) => void
+  onDensity: (density: Settings['density']) => void
+  onToggleJitter: (next: boolean) => void
   onOpenLookConfig: () => void
 }
 
@@ -34,6 +37,19 @@ const CHARSET_LEVELS: { id: 'ascii' | 'block' | 'dot' | 'line'; label: string }[
   { id: 'block', label: '像素方块 ░▒▓█' },
   { id: 'dot', label: '点阵 ·∙•●' },
   { id: 'line', label: '线条 ·-=|\\' }
+]
+
+const DENSITY_LEVELS: { id: Settings['density']; label: string }[] = [
+  { id: 'sparse', label: '稀疏' },
+  { id: 'normal', label: '正常' },
+  { id: 'dense', label: '密集' }
+]
+
+const MOTION_LEVELS: { id: Settings['motionPreset']; label: string }[] = [
+  { id: 'off', label: '不启用动效' },
+  { id: 'short', label: '短：轻快' },
+  { id: 'medium', label: '中：丝滑' },
+  { id: 'long', label: '长：舒展' }
 ]
 
 // Built-in colour-look presets — the full definitions live in PetCanvas (LOOKS).
@@ -57,6 +73,7 @@ export function buildTrayMenu(settings: Settings, h: MenuHandlers, customLooks: 
   const curOpacity = settings.opacity ?? 1
   const curSize = settings.windowSize || 220
   const curShape = settings.shape || 'donut'
+  const curMotion = settings.motionPreset ?? (settings.motionEffects === false ? 'off' : 'medium')
   const lookItems: Electron.MenuItemConstructorOptions[] = LOOK_PRESETS.map((p) => ({
     label: p.label,
     type: 'radio' as const,
@@ -119,6 +136,15 @@ export function buildTrayMenu(settings: Settings, h: MenuHandlers, customLooks: 
       }))
     },
     {
+      label: '▦ 字符密度',
+      submenu: DENSITY_LEVELS.map((d) => ({
+        label: d.label,
+        type: 'radio' as const,
+        checked: (settings.density ?? 'normal') === d.id,
+        click: () => h.onDensity(d.id)
+      }))
+    },
+    {
       label: '✨ 光晕',
       type: 'checkbox',
       checked: settings.glow === true,
@@ -138,6 +164,25 @@ export function buildTrayMenu(settings: Settings, h: MenuHandlers, customLooks: 
       type: 'checkbox',
       checked: settings.randomSpin === true,
       click: (m) => h.onToggleRandomSpin(m.checked)
+    },
+    {
+      label: '🌊 动效',
+      submenu: [
+        ...MOTION_LEVELS.map((m) => ({
+          label: m.label,
+          type: 'radio' as const,
+          checked: curMotion === m.id,
+          click: () => h.onMotionPreset(m.id)
+        })),
+        { type: 'separator' as const },
+        {
+          label: '↔ 点击抖动',
+          type: 'checkbox' as const,
+          checked: curMotion !== 'off' && settings.jitter !== false,
+          enabled: curMotion !== 'off',
+          click: (m: Electron.MenuItem) => h.onToggleJitter(m.checked)
+        }
+      ]
     },
     {
       label: '🌗 不透明度',

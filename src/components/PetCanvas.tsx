@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import type { LookDef, Settings } from '@/lib/types'
+import type { DailyStats, LookDef, Settings } from '@/lib/types'
 import { WebGLGlyphRenderer, type GlyphInstance } from '@/lib/webglGlyphRenderer'
 
 interface Props {
@@ -23,6 +23,12 @@ interface Props {
   glow?: boolean
   /** kick the spin in a random direction on each input, rather than always forward */
   randomSpin?: boolean
+  /** Extra input pulse / milestone celebration duration. */
+  motionPreset?: Settings['motionPreset']
+  /** Character grid density. */
+  density?: Settings['density']
+  /** Add a small left/right wobble to click feedback. */
+  jitter?: boolean
 }
 
 /** Character-set ramps. These are a separate toggle from the colour look
@@ -335,7 +341,16 @@ interface DragState {
   lastSent: number
 }
 
-export default function PetCanvas({ size, overlayActive, shape = 'donut', dark = true, look = 'classic', customLook, charset = 'ascii', glow = false, randomSpin = false }: Props) {
+type InputImpulse = 'key' | 'click' | 'wheel'
+
+const MOTION_MS: Record<NonNullable<Settings['motionPreset']>, number> = {
+  off: 0,
+  short: 260,
+  medium: 520,
+  long: 900
+}
+
+export default function PetCanvas({ size, overlayActive, shape = 'donut', dark = true, look = 'classic', customLook, charset = 'ascii', glow = false, randomSpin = false, motionPreset = 'medium', density = 'normal', jitter = true }: Props) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const rafRef = useRef(0)
   const idleTimerRef = useRef<number | null>(null)
@@ -349,17 +364,24 @@ export default function PetCanvas({ size, overlayActive, shape = 'donut', dark =
   const hitGridRef = useRef<{ mask: Uint8Array; cols: number; rows: number } | null>(null)
   const overlayRef = useRef(!!overlayActive)
   const randomSpinRef = useRef(!!randomSpin)
+  const motionPresetRef = useRef<Settings['motionPreset']>(motionPreset)
+  const impulseTimerRef = useRef<number | null>(null)
+  const celebrationTimerRef = useRef<number | null>(null)
   const spinDirRef = useRef(1)
+  const impulseRef = useRef({ key: 0, click: 0, wheel: 0, combo: 0 })
+  const metricRef = useRef({ frames: 0, evalMs: 0, drawMs: 0, chars: 0, lastLog: performance.now() })
+  const milestoneRef = useRef('')
   /** rotation state lives outside the render effect so a resize/shape swap
    *  rebuilds the canvas without snapping the shape back to its start pose */
   const angA = useRef(TILT_BASE)
   const angB = useRef(0.4)
-  const colorShiftRef = useRef(0)
   const [dragging, setDragging] = useState(false)
+  const [impulse, setImpulse] = useState<InputImpulse | null>(null)
+  const [celebration, setCelebration] = useState('')
   /** bumped on window resize — the canvas backing store must be rebuilt */
   const [viewTick, setViewTick] = useState(0)
 
-  const triggerKick = (s: number) => {
+  const triggerKick = (s: number, kind: InputImpulse = 'key') => {
     // main spin ≈1°/event; secondary tumble ≈0.45°/event; both capped.
     //
     // Random direction has inertia: it is only re-rolled when the spin comes to
@@ -372,6 +394,23 @@ export default function PetCanvas({ size, overlayActive, shape = 'donut', dark =
     const dir = randomSpinRef.current ? spinDirRef.current : 1
     velB.current = Math.max(-MAX_VEL_B, Math.min(MAX_VEL_B, velB.current + dir * 1.0 * s))
     velA.current = Math.max(-MAX_VEL_A, Math.min(MAX_VEL_A, velA.current + dir * 0.45 * s))
+    const motionMs = MOTION_MS[motionPresetRef.current ?? 'medium'] ?? MOTION_MS.medium
+    if (motionMs > 0) {
+      if (kind === 'key') {
+        impulseRef.current.key = Math.min(1, impulseRef.current.key + 0.9 * s)
+        impulseRef.current.combo = Math.min(1, impulseRef.current.combo + 0.18 * s)
+      } else if (kind === 'click') {
+        impulseRef.current.click = Math.min(1, impulseRef.current.click + 1.0 * s)
+      } else {
+        impulseRef.current.wheel = Math.min(1, impulseRef.current.wheel + 1.2 * s)
+      }
+      setImpulse(kind)
+      if (impulseTimerRef.current !== null) window.clearTimeout(impulseTimerRef.current)
+      impulseTimerRef.current = window.setTimeout(() => {
+        setImpulse(null)
+        impulseTimerRef.current = null
+      }, motionMs)
+    }
     wakeAnimationRef.current()
   }
 
@@ -391,6 +430,19 @@ export default function PetCanvas({ size, overlayActive, shape = 'donut', dark =
   useEffect(() => {
     randomSpinRef.current = !!randomSpin
   }, [randomSpin])
+
+  useEffect(() => {
+    motionPresetRef.current = motionPreset
+    if (motionPreset === 'off') {
+      impulseRef.current = { key: 0, click: 0, wheel: 0, combo: 0 }
+      if (impulseTimerRef.current !== null) window.clearTimeout(impulseTimerRef.current)
+      if (celebrationTimerRef.current !== null) window.clearTimeout(celebrationTimerRef.current)
+      impulseTimerRef.current = null
+      celebrationTimerRef.current = null
+      setImpulse(null)
+      setCelebration('')
+    }
+  }, [motionPreset])
 
   useEffect(() => {
     const onMove = (e: MouseEvent) => {
@@ -452,30 +504,41 @@ export default function PetCanvas({ size, overlayActive, shape = 'donut', dark =
   // ---------------- dragging ----------------
   const startDrag = (e: React.MouseEvent) => {
     if (e.button !== 0 || dragRef.current) return
-    triggerKick(0.5)
+    // The native hook (or the fallback IPC forwarder) delivers the same
+    // mousedown to the input listener below. Keeping this handler free of a
+    // second kick prevents one click from producing a double flash.
     window.keepboard?.reportWebClick?.(0)
     const sx = e.screenX
     const sy = e.screenY
     window.keepboard?.getWindowPos?.().then((b: { x: number; y: number } | null) => {
       if (!b) return
       dragRef.current = { startX: sx, startY: sy, winX: b.x, winY: b.y, lastSent: 0 }
-      setDragging(true)
-      window.keepboard?.notifyDragStart?.()
+      let dragStarted = false
       const onMove = (ev: MouseEvent) => {
         const st = dragRef.current
         if (!st) return
+        const dx = ev.screenX - st.startX
+        const dy = ev.screenY - st.startY
+        if (!dragStarted && Math.hypot(dx, dy) < 4) return
+        if (!dragStarted) {
+          dragStarted = true
+          setDragging(true)
+          window.keepboard?.notifyDragStart?.()
+        }
         const now = performance.now()
         if (now - st.lastSent < 16) return
         st.lastSent = now
         window.keepboard?.dragWindowTo?.(
-          Math.round(st.winX + ev.screenX - st.startX),
-          Math.round(st.winY + ev.screenY - st.startY)
+          Math.round(st.winX + dx),
+          Math.round(st.winY + dy)
         )
       }
       const onUp = () => {
         dragRef.current = null
-        setDragging(false)
-        window.keepboard?.notifyDragEnd?.()
+        if (dragStarted) {
+          setDragging(false)
+          window.keepboard?.notifyDragEnd?.()
+        }
         window.removeEventListener('mousemove', onMove)
         window.removeEventListener('mouseup', onUp)
       }
@@ -488,9 +551,30 @@ export default function PetCanvas({ size, overlayActive, shape = 'donut', dark =
   useEffect(() => {
     const off = window.keepboard?.onInputEvent?.((e: { type: string }) => {
       if (!e) return
-      if (e.type === 'keypress') triggerKick(1)
-      else if (e.type === 'wheel') triggerKick(0.35)
-      else if (typeof e.type === 'string' && e.type.startsWith('mousedown')) triggerKick(0.8)
+      if (e.type === 'keypress') triggerKick(1, 'key')
+      else if (e.type === 'wheel') triggerKick(0.35, 'wheel')
+      else if (typeof e.type === 'string' && e.type.startsWith('mousedown')) triggerKick(0.8, 'click')
+    })
+    return () => off?.()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  useEffect(() => {
+    const off = window.keepboard?.onDaily?.((d: DailyStats) => {
+      if ((MOTION_MS[motionPresetRef.current ?? 'medium'] ?? MOTION_MS.medium) <= 0) return
+      if (!d) return
+      const bucket = Math.floor(d.keyboardTotal / 1000)
+      const key = `${d.date}:${bucket}`
+      if (bucket <= 0 || key === milestoneRef.current) return
+      milestoneRef.current = key
+      setCelebration(`${bucket * 1000}`)
+      impulseRef.current.combo = 1
+      triggerKick(1.2, 'key')
+      if (celebrationTimerRef.current !== null) window.clearTimeout(celebrationTimerRef.current)
+      celebrationTimerRef.current = window.setTimeout(() => {
+        setCelebration('')
+        celebrationTimerRef.current = null
+      }, Math.max(1800, (MOTION_MS[motionPresetRef.current ?? 'medium'] ?? MOTION_MS.medium) * 2))
     })
     return () => off?.()
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -500,8 +584,8 @@ export default function PetCanvas({ size, overlayActive, shape = 'donut', dark =
   // bridge. It is removed from production builds by Vite's DEV constant.
   useEffect(() => {
     if (!import.meta.env.DEV || new URLSearchParams(window.location.search).get('spin') !== '1') return
-    triggerKick(0.8)
-    const timer = window.setInterval(() => triggerKick(0.16), 180)
+    triggerKick(0.8, 'key')
+    const timer = window.setInterval(() => triggerKick(0.16, 'key'), 180)
     return () => window.clearInterval(timer)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -536,7 +620,8 @@ export default function PetCanvas({ size, overlayActive, shape = 'donut', dark =
     // scaling x by 2 for terminal cells — same idea, measured instead of guessed.
     // Glyph size scales down a little as the window grows, so a large window
     // renders finer (the globe in particular needs the resolution).
-    const FONT_PX = Math.max(4.2, Math.min(6.4, 6.6 - (sz - 220) / 420 * 2.4))
+    const densityScale = density === 'dense' ? 0.78 : density === 'sparse' ? 1.22 : 1
+    const FONT_PX = Math.max(3.4, Math.min(7.4, (6.6 - (sz - 220) / 420 * 2.4) * densityScale))
     measureCtx.font = `${FONT_PX}px Consolas, "Courier New", monospace`
     const CELL_W = measureCtx.measureText('M').width || FONT_PX * 0.6
     const CELL_H = FONT_PX * LINE_RATIO
@@ -627,17 +712,22 @@ export default function PetCanvas({ size, overlayActive, shape = 'donut', dark =
       }
       charCount++
     }
+    const metricsEnabled = import.meta.env.DEV && new URLSearchParams(window.location.search).get('metrics') === '1'
 
     const tick = () => {
       rafRef.current = 0
+      const frameStart = performance.now()
       // dual-axis spin: A tumbles, B main rotation; both kick + decay; static at rest
       velB.current *= 0.94
       velA.current *= 0.94
+      impulseRef.current.key *= 0.86
+      impulseRef.current.click *= 0.78
+      impulseRef.current.wheel *= 0.9
+      impulseRef.current.combo *= 0.965
       if (Math.abs(velB.current) < 0.02) velB.current = 0
       if (Math.abs(velA.current) < 0.02) velA.current = 0
       angA.current += (velA.current * Math.PI) / 180
       angB.current += (velB.current * Math.PI) / 180
-      colorShiftRef.current += (velB.current / 180) * 0.5
 
       // A full end-over-end tumble makes the long DNA silhouette collapse to
       // a short line for much of the rotation. Keep its secondary axis as a
@@ -659,10 +749,12 @@ export default function PetCanvas({ size, overlayActive, shape = 'donut', dark =
       const B = shape === 'heart'
         ? Math.sin(angB.current - 0.4) * 0.35
         : angB.current
-      const colorShift = colorShiftRef.current
+      // Keep the palette anchored to the shape. Rotation should change the
+      // silhouette and lighting, not leave the pet parked on a darker palette
+      // band after the input impulse settles.
+      const colorShift = 0
       const cosA = Math.cos(A), sinA = Math.sin(A)
       const cosB = Math.cos(B), sinB = Math.sin(B)
-
       zbuf.fill(0)
       hitMask.fill(0)
 
@@ -1032,6 +1124,7 @@ export default function PetCanvas({ size, overlayActive, shape = 'donut', dark =
         }
       }
 
+      const evalEnd = performance.now()
       // clear in canvas units (sz), not the window-setting prop — they diverge
       for (let i = 0; i < charCount; i++) {
         const c = chars[i]
@@ -1055,6 +1148,27 @@ export default function PetCanvas({ size, overlayActive, shape = 'donut', dark =
           ctx.fillText(c.ch, (c.x + 0.5) * CELL_W, (c.y + 0.5) * CELL_H)
         }
         ctx.shadowBlur = 0
+      }
+      const drawEnd = performance.now()
+      if (metricsEnabled) {
+        const m = metricRef.current
+        m.frames += 1
+        m.evalMs += evalEnd - frameStart
+        m.drawMs += drawEnd - evalEnd
+        m.chars += charCount
+        if (drawEnd - m.lastLog >= 1000) {
+          const fps = m.frames * 1000 / (drawEnd - m.lastLog)
+          console.info(
+            `[keepBoard:metrics] shape=${shape} ${COLS}x${ROWS} renderer=${gpu ? 'webgl2' : 'canvas2d'} ` +
+            `fps=${fps.toFixed(1)} eval=${(m.evalMs / m.frames).toFixed(2)}ms ` +
+            `draw=${(m.drawMs / m.frames).toFixed(2)}ms chars=${Math.round(m.chars / m.frames)}`
+          )
+          m.frames = 0
+          m.evalMs = 0
+          m.drawMs = 0
+          m.chars = 0
+          m.lastLog = drawEnd
+        }
       }
 
       // Once both axes settle, preserve the final frame and stop consuming a
@@ -1081,25 +1195,28 @@ export default function PetCanvas({ size, overlayActive, shape = 'donut', dark =
       wakeAnimationRef.current = () => { }
       if (rafRef.current) cancelAnimationFrame(rafRef.current)
       if (idleTimerRef.current !== null) window.clearTimeout(idleTimerRef.current)
+      if (impulseTimerRef.current !== null) window.clearTimeout(impulseTimerRef.current)
+      if (celebrationTimerRef.current !== null) window.clearTimeout(celebrationTimerRef.current)
       idleTimerRef.current = null
+      impulseTimerRef.current = null
+      celebrationTimerRef.current = null
       gpu?.dispose()
       if (!gpu) delete canvas.dataset.renderer
       if (hitGridRef.current?.mask === hitMask) hitGridRef.current = null
       rafRef.current = 0
     }
-  }, [shape, size, viewTick, dark, look, customLook, charset, glow, randomSpin])
+  }, [shape, size, viewTick, dark, look, customLook, charset, glow, randomSpin, density])
+
+  const stageClass = [
+    'pet-stage',
+    dragging ? 'dragging' : '',
+    motionPreset !== 'off' && impulse ? `impulse-${impulse}` : '',
+    motionPreset !== 'off' && jitter && impulse === 'click' ? 'jitter-on' : '',
+    motionPreset !== 'off' && celebration ? 'celebrating' : ''
+  ].filter(Boolean).join(' ')
 
   return (
-    <div style={{
-      width: '100%',
-      height: '100%',
-      // inset shadow rather than a border: a border shrinks the canvas box and
-      // costs the shape 3px of fill on every edge
-      boxShadow: dragging ? 'inset 0 0 0 1.5px rgba(100,160,255,0.7)' : 'none',
-      background: dragging ? 'rgba(60,120,220,0.18)' : 'transparent',
-      transition: 'box-shadow 0.15s, background 0.15s',
-      cursor: 'grab'
-    }}>
+    <div className={stageClass}>
       <canvas
         ref={canvasRef}
         style={{
@@ -1115,6 +1232,13 @@ export default function PetCanvas({ size, overlayActive, shape = 'donut', dark =
         onMouseDown={startDrag}
         aria-label="keepBoard 3D 甜甜圈"
       />
+      <div className="pet-ring" aria-hidden="true" />
+      {motionPreset !== 'off' && celebration && (
+        <div className="pet-celebration" aria-hidden="true">
+          <span>{celebration}</span>
+          <small>KEYS</small>
+        </div>
+      )}
     </div>
   )
 }

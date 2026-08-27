@@ -21,13 +21,11 @@ export default function StatsApp({ panel }: Props) {
     }
   }, [panel])
 
-  const close = () => window.keepboard?.closeStats?.()
-
   return (
     <div className="stats-shell">
       {panel === 'daily'
-        ? <DailyPanel daily={daily} formatDuration={formatDuration} onClose={close} />
-        : <WeeklyPanel weekly={weekly} formatDuration={formatDuration} onClose={close} />}
+        ? <DailyPanel daily={daily} formatDuration={formatDuration} />
+        : <WeeklyPanel weekly={weekly} formatDuration={formatDuration} />}
     </div>
   )
 }

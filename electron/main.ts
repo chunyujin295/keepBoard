@@ -312,6 +312,15 @@ const menuHandlers = {
   onToggleRandomSpin: (next: boolean) => {
     applySettingsPatch({ randomSpin: next })
   },
+  onMotionPreset: (motionPreset: Settings['motionPreset']) => {
+    applySettingsPatch({ motionPreset, motionEffects: motionPreset !== 'off' })
+  },
+  onDensity: (density: Settings['density']) => {
+    applySettingsPatch({ density })
+  },
+  onToggleJitter: (jitter: boolean) => {
+    applySettingsPatch({ jitter })
+  },
   onOpenLookConfig: () => {
     loadCustomLooks() // ensures the file exists
     shell.openPath(lookConfigPath()).catch(() => { })

@@ -13,6 +13,11 @@ export interface Settings {
   charset: 'ascii' | 'block' | 'dot' | 'line'
   glow: boolean
   randomSpin: boolean
+  /** @deprecated Use motionPreset; kept to migrate old settings files. */
+  motionEffects: boolean
+  motionPreset: 'off' | 'short' | 'medium' | 'long'
+  density: 'sparse' | 'normal' | 'dense'
+  jitter: boolean
 }
 
 export interface LookDef {

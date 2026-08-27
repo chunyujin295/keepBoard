@@ -18,6 +18,17 @@ type StoreShape = {
   bounds: Record<string, ContentBox>
 }
 
+function normalizeSettings(raw: Partial<Settings> | undefined): Settings {
+  const settings = { ...DEFAULT_SETTINGS, ...(raw ?? {}) }
+  const rawMotionPreset = (raw as Record<string, unknown> | undefined)?.motionPreset
+  if (rawMotionPreset !== 'off' && rawMotionPreset !== 'short' && rawMotionPreset !== 'medium' && rawMotionPreset !== 'long') {
+    settings.motionPreset = raw?.motionEffects === false ? 'off' : DEFAULT_SETTINGS.motionPreset
+  }
+  settings.motionEffects = settings.motionPreset !== 'off'
+  settings.jitter = settings.motionPreset !== 'off' && settings.jitter !== false
+  return settings
+}
+
 export class AppStore {
   private dir: string
   private file: string
@@ -41,7 +52,7 @@ export class AppStore {
       const raw = fs.readFileSync(this.file, 'utf8')
       const parsed = JSON.parse(raw) as Partial<StoreShape>
       return {
-        settings: { ...DEFAULT_SETTINGS, ...(parsed.settings ?? {}) },
+        settings: normalizeSettings(parsed.settings),
         daily: parsed.daily ?? {},
         bounds: parsed.bounds ?? {}
       }
@@ -61,7 +72,7 @@ export class AppStore {
   getSettings(): Settings { return { ...this.data.settings } }
 
   updateSettings(patch: Partial<Settings>): Settings {
-    this.data.settings = { ...this.data.settings, ...patch }
+    this.data.settings = normalizeSettings({ ...this.data.settings, ...patch })
     this.save()
     return this.getSettings()
   }

@@ -3,43 +3,57 @@ import type { DailyStats } from '@/lib/types'
 interface Props {
   daily: DailyStats | null
   formatDuration: (ms: number) => string
-  onClose: () => void
 }
 
 function fmt(n: number) { return n.toLocaleString('en-US') }
 
-export default function DailyPanel({ daily, formatDuration, onClose }: Props) {
+export default function DailyPanel({ daily, formatDuration }: Props) {
   const d = daily
+  const totalClicks = d ? d.mouseLeft + d.mouseRight + d.mouseMiddle : 0
+  const keyTypes = d ? [
+    ['字母', d.keyboardByType.alpha],
+    ['数字', d.keyboardByType.numeric],
+    ['功能', d.keyboardByType.function],
+    ['修饰', d.keyboardByType.modifier],
+    ['方向', d.keyboardByType.arrow],
+    ['大键', d.keyboardByType.bigKey],
+    ['其他', d.keyboardByType.other]
+  ] as const : []
+  const maxKeyType = Math.max(1, ...keyTypes.map(([, v]) => v))
+
   return (
-    <div className="panel" onMouseDown={(e) => e.stopPropagation()}>
+    <div className="panel daily-panel" onMouseDown={(e) => e.stopPropagation()}>
       <div className="panel-header">
-        <span className="panel-title">📊 今日统计</span>
-        <button className="close-btn" onClick={onClose}>×</button>
+        <div>
+          <span className="panel-title">今日统计</span>
+          {d && <div className="panel-meta">{d.date}</div>}
+        </div>
       </div>
       {!d ? <div className="panel-empty">加载中…</div> : (
         <>
-          <div className="panel-grid">
-            <Row k="日期" v={d.date} />
-            <BigRow k="⌨ 键盘" v={fmt(d.keyboardTotal)} />
-            <BigRow k="🖱 点击" v={fmt(d.mouseLeft + d.mouseRight + d.mouseMiddle)} />
-            <Row k="  左键" v={fmt(d.mouseLeft)} dim />
-            <Row k="  右键" v={fmt(d.mouseRight)} dim />
-            <Row k="  中键" v={fmt(d.mouseMiddle)} dim />
-            <Row k="🎡 滚轮" v={fmt(d.wheelScrolls)} />
-            <BigRow k="⏱ 屏时" v={formatDuration(d.screenTimeMs)} />
-            <Row k="⚡ 峰值APM" v={String(d.peakApm)} />
-            <Row k="🏃 最长会话" v={formatDuration(d.longestSessionMs)} />
+          <div className="metric-hero">
+            <Metric label="键击" value={fmt(d.keyboardTotal)} tone="gold" />
+            <Metric label="点击" value={fmt(totalClicks)} tone="green" />
+            <Metric label="屏时" value={formatDuration(d.screenTimeMs)} tone="blue" />
+          </div>
+          <div className="panel-grid compact">
+            <Row k="峰值 APM" v={String(d.peakApm)} />
+            <Row k="最长会话" v={formatDuration(d.longestSessionMs)} />
+            <Row k="滚轮" v={fmt(d.wheelScrolls)} />
+            <Row k="鼠标细分" v={`${fmt(d.mouseLeft)} / ${fmt(d.mouseRight)} / ${fmt(d.mouseMiddle)}`} dim />
           </div>
           <div className="panel-divider" />
           <div className="panel-subtitle">按键分类</div>
-          <div className="panel-grid">
-            <Row k="字母 A-Z" v={fmt(d.keyboardByType.alpha)} />
-            <Row k="数字" v={fmt(d.keyboardByType.numeric)} />
-            <Row k="功能 Fx" v={fmt(d.keyboardByType.function)} />
-            <Row k="修饰 Ctrl" v={fmt(d.keyboardByType.modifier)} />
-            <Row k="方向键" v={fmt(d.keyboardByType.arrow)} />
-            <Row k="大键" v={fmt(d.keyboardByType.bigKey)} />
-            <Row k="其他" v={fmt(d.keyboardByType.other)} />
+          <div className="type-bars">
+            {keyTypes.map(([label, value]) => (
+              <div className="type-bar" key={label}>
+                <span>{label}</span>
+                <div className="type-track">
+                  <i style={{ width: `${Math.max(4, value / maxKeyType * 100)}%` }} />
+                </div>
+                <b>{fmt(value)}</b>
+              </div>
+            ))}
           </div>
         </>
       )}
@@ -55,11 +69,12 @@ function Row({ k, v, dim }: { k: string; v: string; dim?: boolean }) {
     </div>
   )
 }
-function BigRow({ k, v }: { k: string; v: string }) {
+
+function Metric({ label, value, tone }: { label: string; value: string; tone: 'gold' | 'green' | 'blue' }) {
   return (
-    <div className="panel-row big">
-      <span className="panel-k">{k}</span>
-      <span className="panel-v">{v}</span>
+    <div className={`metric-card ${tone}`}>
+      <span>{label}</span>
+      <strong>{value}</strong>
     </div>
   )
 }

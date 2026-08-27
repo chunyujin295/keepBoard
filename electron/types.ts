@@ -20,6 +20,14 @@ export interface Settings {
   glow: boolean
   /** Kick the spin in a random direction per input, instead of always forward. */
   randomSpin: boolean
+  /** @deprecated Use motionPreset; kept to migrate old settings files. */
+  motionEffects: boolean
+  /** Extra input pulse / milestone celebration duration. Core spin still works when off. */
+  motionPreset: 'off' | 'short' | 'medium' | 'long'
+  /** Character grid density. Smaller glyphs make denser shapes. */
+  density: 'sparse' | 'normal' | 'dense'
+  /** Add a small left/right wobble to click feedback. */
+  jitter: boolean
 }
 
 /** The colour-ish appearance dimensions of a look, exposed in a preset and
@@ -62,7 +70,11 @@ export const DEFAULT_SETTINGS: Settings = {
   look: 'classic',
   charset: 'ascii',
   glow: false,
-  randomSpin: false
+  randomSpin: false,
+  motionEffects: true,
+  motionPreset: 'medium',
+  density: 'normal',
+  jitter: true
 }
 
 export interface DailyStats {
