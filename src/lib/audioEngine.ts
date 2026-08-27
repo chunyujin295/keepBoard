@@ -29,9 +29,6 @@ interface Theme {
   vibrato: boolean
   vibratoDepth: number
   vibratoRate: number
-  clickOct: number
-  clickDur: number
-  clickDrop: number
   wheelSweepMin: number
   wheelSweepMax: number
   breath: boolean
@@ -58,9 +55,6 @@ const THEMES: Record<Exclude<AudioTheme, 'none'>, Theme> = {
     vibrato: true,
     vibratoDepth: 0.04,
     vibratoRate: 5,
-    clickOct: 12,
-    clickDur: 0.14,
-    clickDrop: 0.55,
     wheelSweepMin: 300,
     wheelSweepMax: 900,
     breath: true,
@@ -84,9 +78,6 @@ const THEMES: Record<Exclude<AudioTheme, 'none'>, Theme> = {
     vibrato: false,
     vibratoDepth: 0,
     vibratoRate: 0,
-    clickOct: 12,
-    clickDur: 0.08,
-    clickDrop: 0.8,
     wheelSweepMin: 150,
     wheelSweepMax: 300,
     breath: false,
@@ -110,9 +101,6 @@ const THEMES: Record<Exclude<AudioTheme, 'none'>, Theme> = {
     vibrato: false,
     vibratoDepth: 0,
     vibratoRate: 0,
-    clickOct: 12,
-    clickDur: 0.06,
-    clickDrop: 0.5,
     wheelSweepMin: 400,
     wheelSweepMax: 1200,
     breath: false,
@@ -136,9 +124,6 @@ const THEMES: Record<Exclude<AudioTheme, 'none'>, Theme> = {
     vibrato: false,
     vibratoDepth: 0,
     vibratoRate: 0,
-    clickOct: 12,
-    clickDur: 0.1,
-    clickDrop: 0.4,
     wheelSweepMin: 500,
     wheelSweepMax: 1500,
     breath: false,
@@ -162,9 +147,6 @@ const THEMES: Record<Exclude<AudioTheme, 'none'>, Theme> = {
     vibrato: false,
     vibratoDepth: 0,
     vibratoRate: 0,
-    clickOct: 0,
-    clickDur: 0.45,
-    clickDrop: 1.0,
     wheelSweepMin: 400,
     wheelSweepMax: 900,
     breath: false,
@@ -285,28 +267,33 @@ class AudioEngine {
   }
 
   private key(intensity: number) {
+    this.pluck(false, intensity)
+  }
+
+  private click() {
+    this.pluck(true, 0)
+  }
+
+  /** One note voice shared by key and click — they draw from the SAME pitch,
+   *  waveform, glide, vibrato, attack, harmony and breath layers, so a click is
+   *  just a shorter, slightly quieter pluck of the same instrument rather than
+   *  a different sound. `short` halves the duration and drops the level. */
+  private pluck(short: boolean, intensity: number) {
     const th = THEMES[this.theme]
-    const boost = Math.min(2, Math.floor(intensity * 3)) * th.intensityBoost
+    const boost = short ? 0 : Math.min(2, Math.floor(intensity * 3)) * th.intensityBoost
     const root = randOf(th.roots)
     const oct = Math.floor(Math.random() * (th.octSpread + 1)) * 12
     const f0 = midiToFreq(root + randOf(th.scale) + oct + boost)
     const f1 = th.glide ? f0 * (Math.random() < 0.5 ? 1.06 : 0.94) : f0
-    const dur = th.keyDurMin + Math.random() * (th.keyDurMax - th.keyDurMin)
+    const dur = short
+      ? th.keyDurMin * 0.5 + Math.random() * th.keyDurMin * 0.5
+      : th.keyDurMin + Math.random() * (th.keyDurMax - th.keyDurMin)
+    const level = short ? 0.34 : 0.4
     const wave = th.waves ? randOf(th.waves) : th.wave
-    if (th.organ) this.organ(f0, f1, 0, dur, 0.4, th.attack, th.vibrato ? th.vibratoRate : 0)
-    else this.voice(wave, f0, f1, 0, dur, 0.4, th.vibrato ? th.vibratoDepth : 0, th.vibrato ? th.vibratoRate : 0)
+    if (th.organ) this.organ(f0, f1, 0, dur, level, th.attack, th.vibrato ? th.vibratoRate : 0)
+    else this.voice(wave, f0, f1, 0, dur, level, th.vibrato ? th.vibratoDepth : 0, th.vibrato ? th.vibratoRate : 0)
     if (th.harmony) this.voice(th.wave, f0 * 1.5, f0 * 1.5, 0.01, dur * 0.7, 0.16, 0)
     if (th.breath) this.breath(900, 300, dur * 0.7, 0.14)
-  }
-
-  private click() {
-    const th = THEMES[this.theme]
-    const f0 = midiToFreq(randOf(th.roots) + th.clickOct + randOf(th.scale))
-    const f1 = f0 * th.clickDrop
-    const wave = th.waves ? randOf(th.waves) : th.wave
-    if (th.organ) this.organ(f0, f1, 0, th.clickDur, 0.26, 0.18, 0)
-    else this.voice(wave, f0, f1, 0, th.clickDur, 0.3, 0)
-    if (th.breath) this.breath(1400, 700, 0.09, 0.06)
   }
 
   private wheel() {
