@@ -126,7 +126,8 @@ export function buildTrayMenu(settings: Settings, h: MenuHandlers, customLooks: 
         { label: '➰ 莫比乌斯环', type: 'radio', checked: curShape === 'mobius', click: () => h.onShape('mobius') },
         { label: '❤️ 爱心', type: 'radio', checked: curShape === 'heart', click: () => h.onShape('heart') },
         { label: '🪐 土星', type: 'radio', checked: curShape === 'saturn', click: () => h.onShape('saturn') },
-        { label: '🪼 水母', type: 'radio', checked: curShape === 'jellyfish', click: () => h.onShape('jellyfish') }
+        { label: '🪼 水母', type: 'radio', checked: curShape === 'jellyfish', click: () => h.onShape('jellyfish') },
+        { label: '🌈 彩虹', type: 'radio', checked: curShape === 'rainbow', click: () => h.onShape('rainbow') }
       ]
     },
     {

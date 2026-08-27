@@ -275,7 +275,8 @@ const FIT = {
   mobius: { k: 1.077, ox: 0.5, oy: 0.5 },
   heart: { k: 1.9, ox: 0.5, oy: 0.5 },
   saturn: { k: 1.02, ox: 0.5, oy: 0.5 },
-  jellyfish: { k: 1.48, ox: 0.5, oy: 0.48 }
+  jellyfish: { k: 1.48, ox: 0.5, oy: 0.48 },
+  rainbow: { k: 2.0, ox: 0.5, oy: 0.55 }
 } as const
 
 /** Max spacing between adjacent surface samples, in cells. The old hardcoded
@@ -303,6 +304,9 @@ const TILT_BASE = 0.9
 /** angular velocity caps (deg/frame): main spin ≈ half rev/sec at cap */
 const MAX_VEL_B = 3.2
 const MAX_VEL_A = 1.7
+/** Rainbow crawl: arc-parameter advance per input event. One full shuttle is
+ *  1 / CRAWL_STEP = 20 presses; the caterpillar "budges" one node at a time. */
+const CRAWL_STEP = 1 / 20
 
 type SurfacePoint = { x: number; y: number; z: number; nx: number; ny: number; nz: number }
 let heartSurfaceCache: SurfacePoint[] | null = null
@@ -380,6 +384,12 @@ export default function PetCanvas({ size, overlayActive, shape = 'donut', dark =
    *  rebuilds the canvas without snapping the shape back to its start pose */
   const angA = useRef(TILT_BASE)
   const angB = useRef(0.4)
+  /** latest shape, mirrored from the prop so triggerKick (captured once in a
+   *  [] effect) still sees the currently selected shape. */
+  const shapeRef = useRef(shape)
+  /** Rainbow "caterpillar" crawl: `pos` walks 0 (left end) → 1 (right end) in
+   *  discrete steps, `dir` flips at each end so it shuttles back and forth. */
+  const crawlRef = useRef({ pos: 0, dir: 1 })
   const [dragging, setDragging] = useState(false)
   const [impulse, setImpulse] = useState<InputImpulse | null>(null)
   const [celebration, setCelebration] = useState('')
@@ -387,6 +397,17 @@ export default function PetCanvas({ size, overlayActive, shape = 'donut', dark =
   const [viewTick, setViewTick] = useState(0)
 
   const triggerKick = (s: number, kind: InputImpulse = 'key') => {
+    // The rainbow is a flat half-arc with no spin; input instead advances its
+    // caterpillar crawl one node, shuttling left↔right. Sound still plays.
+    if (shapeRef.current === 'rainbow') {
+      const c = crawlRef.current
+      c.pos += c.dir * CRAWL_STEP
+      if (c.pos >= 1) { c.pos = 1; c.dir = -1 }
+      else if (c.pos <= 0) { c.pos = 0; c.dir = 1 }
+      audioEngine.note(kind, impulseRef.current.combo)
+      wakeAnimationRef.current()
+      return
+    }
     // main spin ≈1°/event; secondary tumble ≈0.45°/event; both capped.
     //
     // Random direction has inertia: it is only re-rolled when the spin comes to
@@ -436,6 +457,12 @@ export default function PetCanvas({ size, overlayActive, shape = 'donut', dark =
   useEffect(() => {
     randomSpinRef.current = !!randomSpin
   }, [randomSpin])
+
+  useEffect(() => {
+    shapeRef.current = shape
+    // Re-entering the rainbow restarts its crawl at the left end.
+    if (shape === 'rainbow') crawlRef.current = { pos: 0, dir: 1 }
+  }, [shape])
 
   useEffect(() => {
     motionPresetRef.current = motionPreset
@@ -1084,6 +1111,48 @@ export default function PetCanvas({ size, overlayActive, shape = 'donut', dark =
             const y0 = 0.39 - 1.86 * q
             const z0 = depth + 0.08 * q * Math.cos(q * 6 + phase + line)
             plotJelly(x0, y0, z0, 0.48 + 0.45 * (1 - q), line / tentacles)
+          }
+        }
+      } else if (shape === 'rainbow') {
+        // Half-circle rainbow (arch up, feet down) rendered as stacked arc
+        // bands. It's a flat z=0 silhouette so it ignores the A/B spin; the
+        // only animation is the caterpillar crawl: a bright bulge that shuttles
+        // left↔right, one node per input event, and rests when you stop.
+        const R_OUT = 1.0
+        const R_IN = 0.55
+        const NBANDS = 8
+        const NSEG = Math.max(80, Math.min(240, Math.ceil(COLS * 1.6)))
+        const head = crawlRef.current.pos // 0 = left end, 1 = right end
+        const NODE_W = 0.12 // crawl bulge half-width, in arc parameter
+        for (let b = 0; b < NBANDS; b++) {
+          const r = R_IN + (R_OUT - R_IN) * b / (NBANDS - 1)
+          const band = b / (NBANDS - 1)
+          for (let i = 0; i <= NSEG; i++) {
+            const t = i / NSEG
+            const phi = Math.PI * (1 - t) // π=left, 0=right
+            const cosP = Math.cos(phi)
+            const sinP = Math.sin(phi)
+            // Crawl bulge: near the head, push the band outward and brighten it.
+            let rr = r
+            let shade = 0.58
+            const d = Math.abs(t - head)
+            if (d < NODE_W) {
+              const bump = 1 - d / NODE_W
+              rr += bump * 0.14
+              shade = 0.58 + 0.42 * bump
+            }
+            const x0 = rr * cosP
+            const y0 = rr * sinP
+            const ooz = 1 / K2 // z = 0, constant depth
+            const xp = Math.round(cx + K1x * ooz * x0)
+            const yp = Math.round(cy - K1y * ooz * y0)
+            if (xp < 0 || yp < 0 || xp >= COLS || yp >= ROWS) continue
+            const idx = yp * COLS + xp
+            if (ooz <= zbuf[idx]) continue
+            zbuf[idx] = ooz
+            // Colour runs red (outer) → violet (inner): clamp the 360° rainbow
+            // ramp to ~13/16 so it stops at violet instead of looping to red.
+            addChar(xp, yp, glyph(Math.min(1, shade)), PALETTE[Math.round(band * 13)])
           }
         }
       } else {

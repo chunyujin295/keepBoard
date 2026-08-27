@@ -1,6 +1,6 @@
 export interface Settings {
   windowSize: number
-  shape: 'donut' | 'sphere' | 'cube' | 'dna' | 'mobius' | 'heart' | 'saturn' | 'jellyfish'
+  shape: 'donut' | 'sphere' | 'cube' | 'dna' | 'mobius' | 'heart' | 'saturn' | 'jellyfish' | 'rainbow'
   autoStart: boolean
   autoDock: boolean
   alwaysOnTop: boolean

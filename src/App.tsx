@@ -28,7 +28,7 @@ export default function App() {
   const previewShape = import.meta.env.DEV
     ? new URLSearchParams(window.location.search).get('shape')
     : null
-  const shape = previewShape && ['donut', 'sphere', 'cube', 'dna', 'mobius', 'heart', 'saturn', 'jellyfish'].includes(previewShape)
+  const shape = previewShape && ['donut', 'sphere', 'cube', 'dna', 'mobius', 'heart', 'saturn', 'jellyfish', 'rainbow'].includes(previewShape)
     ? previewShape as Settings['shape']
     : settings?.shape ?? 'donut'
 
