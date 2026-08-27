@@ -1160,7 +1160,7 @@ export default function PetCanvas({ size, overlayActive, shape = 'donut', dark =
           : 0.5 + 0.5 * Math.sin(now * 0.0006)
         const motion = Math.min(1, Math.abs(sweepRef.current.vel) / SWEEP_MAXV)
         const WAVE_K = 2.5                              // ~2.5 humps along the arc
-        const amp = 0.04 + 0.13 * motion                // idle swell → full wave
+        const amp = 0.02 + 0.06 * motion                // idle swell → full wave
         for (let b = 0; b < NBANDS; b++) {
           const R = R_IN + (R_OUT - R_IN) * b / (NBANDS - 1)
           const col = PALETTE[Math.round((b / (NBANDS - 1)) * 13)]
