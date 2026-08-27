@@ -276,7 +276,7 @@ const FIT = {
   heart: { k: 1.9, ox: 0.5, oy: 0.5 },
   saturn: { k: 1.02, ox: 0.5, oy: 0.5 },
   jellyfish: { k: 1.48, ox: 0.5, oy: 0.48 },
-  rainbow: { k: 2.0, ox: 0.5, oy: 0.55 }
+  rainbow: { k: 2.3, ox: 0.5, oy: 0.68 }
 } as const
 
 /** Max spacing between adjacent surface samples, in cells. The old hardcoded
@@ -304,9 +304,19 @@ const TILT_BASE = 0.9
 /** angular velocity caps (deg/frame): main spin ≈ half rev/sec at cap */
 const MAX_VEL_B = 3.2
 const MAX_VEL_A = 1.7
-/** Rainbow crawl: arc-parameter advance per input event. One full shuttle is
- *  1 / CRAWL_STEP = 20 presses; the caterpillar "budges" one node at a time. */
-const CRAWL_STEP = 1 / 20
+/** Rainbow caterpillar crawl physics: input kicks a velocity impulse in the
+ *  current direction, the node coasts with damping and bounces off each end
+ *  with an energy loss — so it glides, overshoots slightly and settles, rather
+ *  than snapping one discrete step per press. */
+const CRAWL_IMPULSE = 0.045
+const CRAWL_MAXV = 0.06
+const CRAWL_DAMP = 0.92
+const CRAWL_BOUNCE = 0.55
+/** crawl position below which the node counts as at rest */
+const CRAWL_REST = 0.0015
+/** Rainbow vertical stretch: a true semicircle is 2:1 wide and would only fill
+ *  half the square window; stretching y makes a taller, fuller arch. */
+const RAINBOW_SY = 1.35
 
 type SurfacePoint = { x: number; y: number; z: number; nx: number; ny: number; nz: number }
 let heartSurfaceCache: SurfacePoint[] | null = null
@@ -389,7 +399,7 @@ export default function PetCanvas({ size, overlayActive, shape = 'donut', dark =
   const shapeRef = useRef(shape)
   /** Rainbow "caterpillar" crawl: `pos` walks 0 (left end) → 1 (right end) in
    *  discrete steps, `dir` flips at each end so it shuttles back and forth. */
-  const crawlRef = useRef({ pos: 0, dir: 1 })
+  const crawlRef = useRef({ pos: 0, vel: 0 })
   const [dragging, setDragging] = useState(false)
   const [impulse, setImpulse] = useState<InputImpulse | null>(null)
   const [celebration, setCelebration] = useState('')
@@ -397,13 +407,15 @@ export default function PetCanvas({ size, overlayActive, shape = 'donut', dark =
   const [viewTick, setViewTick] = useState(0)
 
   const triggerKick = (s: number, kind: InputImpulse = 'key') => {
-    // The rainbow is a flat half-arc with no spin; input instead advances its
-    // caterpillar crawl one node, shuttling left↔right. Sound still plays.
+    // The rainbow has no spin; input instead kicks a velocity impulse on its
+    // caterpillar crawl — the direction follows the current heading (or +1 when
+    // at rest), and the end-bounce flip is handled by the per-frame physics.
     if (shapeRef.current === 'rainbow') {
       const c = crawlRef.current
-      c.pos += c.dir * CRAWL_STEP
-      if (c.pos >= 1) { c.pos = 1; c.dir = -1 }
-      else if (c.pos <= 0) { c.pos = 0; c.dir = 1 }
+      const dir = c.vel >= 0 ? 1 : -1
+      c.vel += dir * CRAWL_IMPULSE
+      if (c.vel > CRAWL_MAXV) c.vel = CRAWL_MAXV
+      else if (c.vel < -CRAWL_MAXV) c.vel = -CRAWL_MAXV
       audioEngine.note(kind, impulseRef.current.combo)
       wakeAnimationRef.current()
       return
@@ -460,8 +472,8 @@ export default function PetCanvas({ size, overlayActive, shape = 'donut', dark =
 
   useEffect(() => {
     shapeRef.current = shape
-    // Re-entering the rainbow restarts its crawl at the left end.
-    if (shape === 'rainbow') crawlRef.current = { pos: 0, dir: 1 }
+    // Re-entering the rainbow restarts its crawl at the left end, at rest.
+    if (shape === 'rainbow') crawlRef.current = { pos: 0, vel: 0 }
   }, [shape])
 
   useEffect(() => {
@@ -772,6 +784,17 @@ export default function PetCanvas({ size, overlayActive, shape = 'donut', dark =
       if (Math.abs(velA.current) < 0.02) velA.current = 0
       angA.current += (velA.current * Math.PI) / 180
       angB.current += (velB.current * Math.PI) / 180
+
+      // Rainbow caterpillar physics: coast, damp, and bounce off each end with
+      // an energy loss so the node glides and settles with a little overshoot.
+      if (shape === 'rainbow') {
+        const c = crawlRef.current
+        c.pos += c.vel
+        if (c.pos >= 1) { c.pos = 1; c.vel = -Math.abs(c.vel) * CRAWL_BOUNCE }
+        else if (c.pos <= 0) { c.pos = 0; c.vel = Math.abs(c.vel) * CRAWL_BOUNCE }
+        c.vel *= CRAWL_DAMP
+        if (Math.abs(c.vel) < CRAWL_REST) c.vel = 0
+      }
 
       // A full end-over-end tumble makes the long DNA silhouette collapse to
       // a short line for much of the rotation. Keep its secondary axis as a
@@ -1114,45 +1137,57 @@ export default function PetCanvas({ size, overlayActive, shape = 'donut', dark =
           }
         }
       } else if (shape === 'rainbow') {
-        // Half-circle rainbow (arch up, feet down) rendered as stacked arc
-        // bands. It's a flat z=0 silhouette so it ignores the A/B spin; the
-        // only animation is the caterpillar crawl: a bright bulge that shuttles
-        // left↔right, one node per input event, and rests when you stop.
+        // Rainbow as a set of concentric 3D tube arcs (a "semi-torus" per
+        // colour band). Each band is a circular-cross-section tube with its own
+        // radius and colour, so the arch reads as solid lit pipes rather than a
+        // flat silhouette. Input drives a caterpillar node that crawls along
+        // the arch (bulging + brightening the tube it sits on), while a small
+        // ripple fans out from the node so the rest of the arch shimmers too.
         const R_OUT = 1.0
-        const R_IN = 0.55
+        const R_IN = 0.5
+        const TUBE = 0.05
         const NBANDS = 8
-        const NSEG = Math.max(80, Math.min(240, Math.ceil(COLS * 1.6)))
-        const head = crawlRef.current.pos // 0 = left end, 1 = right end
-        const NODE_W = 0.12 // crawl bulge half-width, in arc parameter
+        const NTH = Math.max(60, Math.min(200, Math.ceil(COLS * 2.4)))
+        const NPH = Math.max(8, Math.min(14, Math.ceil(ROWS * 0.1)))
+        const head = crawlRef.current.pos // 0 = left (θ=π), 1 = right (θ=0)
+        const headTheta = Math.PI * (1 - head)
+        const NODE_HALF = 0.16 // crawl bulge half-width, radians
+        const wavePhase = performance.now() * 0.004
         for (let b = 0; b < NBANDS; b++) {
-          const r = R_IN + (R_OUT - R_IN) * b / (NBANDS - 1)
-          const band = b / (NBANDS - 1)
-          for (let i = 0; i <= NSEG; i++) {
-            const t = i / NSEG
-            const phi = Math.PI * (1 - t) // π=left, 0=right
-            const cosP = Math.cos(phi)
-            const sinP = Math.sin(phi)
-            // Crawl bulge: near the head, push the band outward and brighten it.
-            let rr = r
-            let shade = 0.58
-            const d = Math.abs(t - head)
-            if (d < NODE_W) {
-              const bump = 1 - d / NODE_W
-              rr += bump * 0.14
-              shade = 0.58 + 0.42 * bump
+          const R = R_IN + (R_OUT - R_IN) * b / (NBANDS - 1)
+          const col = PALETTE[Math.round((b / (NBANDS - 1)) * 13)]
+          for (let i = 0; i <= NTH; i++) {
+            const theta = Math.PI * (1 - i / NTH) // π (left) → 0 (right)
+            const cosT = Math.cos(theta)
+            const sinT = Math.sin(theta)
+            // Caterpillar bulge + fan-out ripple, both in tube radius.
+            const dTheta = theta - headTheta
+            let Rc = R
+            const ad = Math.abs(dTheta)
+            if (ad < NODE_HALF) Rc += (1 - ad / NODE_HALF) * 0.1
+            Rc += 0.012 * Math.sin(ad * 11 - wavePhase)
+            for (let j = 0; j <= NPH; j++) {
+              const phi = 2 * Math.PI * j / NPH
+              const cosP = Math.cos(phi)
+              const sinP = Math.sin(phi)
+              const x0 = (Rc + TUBE * cosP) * cosT
+              const y0 = (Rc + TUBE * cosP) * sinT * RAINBOW_SY
+              const z0 = TUBE * sinP
+              // Tube normal in object space.
+              const nx = cosP * cosT, ny = cosP * sinT, nz = sinP
+              const ooz = 1 / (K2 + z0)
+              const xp = Math.round(cx + K1x * ooz * x0)
+              const yp = Math.round(cy - K1y * ooz * y0)
+              if (xp < 0 || yp < 0 || xp >= COLS || yp >= ROWS) continue
+              const idx = yp * COLS + xp
+              if (ooz <= zbuf[idx]) continue
+              zbuf[idx] = ooz
+              // Light from up-left and toward the viewer, so the top and the
+              // front of each tube read bright and the underside falls into
+              // shadow — the source of the 3D depth.
+              const light = Math.max(0.2, -0.25 * nx + 0.7 * ny - 0.67 * nz)
+              addChar(xp, yp, glyph(Math.min(1, light)), col)
             }
-            const x0 = rr * cosP
-            const y0 = rr * sinP
-            const ooz = 1 / K2 // z = 0, constant depth
-            const xp = Math.round(cx + K1x * ooz * x0)
-            const yp = Math.round(cy - K1y * ooz * y0)
-            if (xp < 0 || yp < 0 || xp >= COLS || yp >= ROWS) continue
-            const idx = yp * COLS + xp
-            if (ooz <= zbuf[idx]) continue
-            zbuf[idx] = ooz
-            // Colour runs red (outer) → violet (inner): clamp the 360° rainbow
-            // ramp to ~13/16 so it stops at violet instead of looping to red.
-            addChar(xp, yp, glyph(Math.min(1, shade)), PALETTE[Math.round(band * 13)])
           }
         }
       } else {
@@ -1259,7 +1294,10 @@ export default function PetCanvas({ size, overlayActive, shape = 'donut', dark =
 
       // Once both axes settle, preserve the final frame and stop consuming a
       // browser frame forever. The next input impulse calls wake() below.
-      if (velB.current !== 0 || velA.current !== 0) {
+      // The rainbow keeps rendering while its crawl velocity is non-zero, so it
+      // coasts to a stop with inertia instead of freezing the instant input ends.
+      if (velB.current !== 0 || velA.current !== 0 ||
+          (shape === 'rainbow' && crawlRef.current.vel !== 0)) {
         rafRef.current = requestAnimationFrame(tick)
       } else if (shape === 'jellyfish') {
         // Jellyfish has a subtle autonomous pulse, but idles at 12fps instead
