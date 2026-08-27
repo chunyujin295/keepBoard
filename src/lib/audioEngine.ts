@@ -30,7 +30,6 @@ interface Theme {
   vibratoDepth: number
   vibratoRate: number
   breath: boolean
-  harmony: boolean
   echo: boolean
   organ: boolean
 }
@@ -54,7 +53,6 @@ const THEMES: Record<Exclude<AudioTheme, 'none'>, Theme> = {
     vibratoDepth: 0.04,
     vibratoRate: 5,
     breath: true,
-    harmony: false,
     echo: true,
     organ: false
   },
@@ -75,7 +73,6 @@ const THEMES: Record<Exclude<AudioTheme, 'none'>, Theme> = {
     vibratoDepth: 0,
     vibratoRate: 0,
     breath: false,
-    harmony: false,
     echo: false,
     organ: false
   },
@@ -96,7 +93,6 @@ const THEMES: Record<Exclude<AudioTheme, 'none'>, Theme> = {
     vibratoDepth: 0,
     vibratoRate: 0,
     breath: false,
-    harmony: false,
     echo: false,
     organ: false
   },
@@ -117,7 +113,6 @@ const THEMES: Record<Exclude<AudioTheme, 'none'>, Theme> = {
     vibratoDepth: 0,
     vibratoRate: 0,
     breath: false,
-    harmony: false,
     echo: true,
     organ: false
   },
@@ -138,7 +133,6 @@ const THEMES: Record<Exclude<AudioTheme, 'none'>, Theme> = {
     vibratoDepth: 0,
     vibratoRate: 0,
     breath: false,
-    harmony: false,
     echo: true,
     organ: true
   }
@@ -249,7 +243,7 @@ class AudioEngine {
     // A quick rising arpeggio over the theme's scale — the milestone chorus.
     th.scale.slice(0, 4).forEach((step, i) => {
       const f = midiToFreq(th.roots[0] + step + 12)
-      if (th.organ) this.organ(f, f, t + i * 0.08, 0.2, 0.3, 0.03, 0)
+      if (th.organ) this.organ(f, f, t + i * 0.08, 0.2, 0.3, th.attack)
       else this.voice(th.wave, f, f, t + i * 0.08, 0.16, 0.3, 0)
     })
   }
@@ -263,9 +257,9 @@ class AudioEngine {
   }
 
   /** One note voice shared by key and click — they draw from the SAME pitch,
-   *  waveform, glide, vibrato, attack, harmony and breath layers, so a click is
-   *  just a shorter, slightly quieter pluck of the same instrument rather than
-   *  a different sound. `short` halves the duration and drops the level. */
+   *  waveform, glide, vibrato, attack and breath layers, so a click is just a
+   *  shorter, slightly quieter pluck of the same instrument rather than a
+   *  different sound. `short` halves the duration and drops the level. */
   private pluck(short: boolean, intensity: number) {
     const th = THEMES[this.theme]
     const boost = short ? 0 : Math.min(2, Math.floor(intensity * 3)) * th.intensityBoost
@@ -278,9 +272,8 @@ class AudioEngine {
       : th.keyDurMin + Math.random() * (th.keyDurMax - th.keyDurMin)
     const level = short ? 0.34 : 0.4
     const wave = th.waves ? randOf(th.waves) : th.wave
-    if (th.organ) this.organ(f0, f1, 0, dur, level, th.attack, th.vibrato ? th.vibratoRate : 0)
+    if (th.organ) this.organ(f0, f1, 0, dur, level, th.attack)
     else this.voice(wave, f0, f1, 0, dur, level, th.vibrato ? th.vibratoDepth : 0, th.vibrato ? th.vibratoRate : 0)
-    if (th.harmony) this.voice(th.wave, f0 * 1.5, f0 * 1.5, 0.01, dur * 0.7, 0.16, 0)
     if (th.breath) this.breath(900, 300, dur * 0.7, 0.14)
   }
 
@@ -328,7 +321,7 @@ class AudioEngine {
    *  slightly detuned for a slow chorus shimmer, a soft filtered-noise "air"
    *  swell rides under the note, and a long release tail lets it drift away —
    *  together reading as a chord floating high in a cathedral. */
-  private organ(f0: number, f1: number, at: number, dur: number, level: number, attack: number, vibRate = 0) {
+  private organ(f0: number, f1: number, at: number, dur: number, level: number, attack: number) {
     const ctx = this.ctx!
     const t = ctx.currentTime + at
     // [harmonic number, relative amplitude] — 1f dominates, higher partials thin out.
@@ -339,20 +332,6 @@ class AudioEngine {
     env.gain.setValueAtTime(0, t)
     env.gain.linearRampToValueAtTime(level, t + attack)
     env.gain.exponentialRampToValueAtTime(0.0001, t + RELEASE)
-
-    // Slow tremolo — amplitude wobble, the "floating" cathedral shimmer.
-    let trem: OscillatorNode | null = null
-    let tremGain: GainNode | null = null
-    if (vibRate > 0) {
-      trem = ctx.createOscillator()
-      trem.frequency.value = vibRate
-      tremGain = ctx.createGain()
-      tremGain.gain.value = level * 0.15
-      trem.connect(tremGain)
-      tremGain.connect(env.gain)
-      trem.start(t)
-      trem.stop(t + RELEASE + 0.1)
-    }
 
     // Each partial is voiced twice at ±5 cents — the beating between the two
     // copies is what makes the sound "shimmer" instead of sitting dead-center.

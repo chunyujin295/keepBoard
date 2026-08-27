@@ -4,6 +4,7 @@ export interface Settings {
   autoStart: boolean
   autoDock: boolean
   alwaysOnTop: boolean
+  /** @deprecated Use audioTheme; kept to migrate old settings files. */
   audioEnabled: boolean
   audioTheme: 'none' | 'ghost' | 'robot' | '8bit' | 'droplet' | 'choir'
   volume: number

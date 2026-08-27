@@ -249,11 +249,7 @@ export function buildTrayMenu(settings: Settings, h: MenuHandlers, customLooks: 
     },
     { label: '📌 立即重新吸附', click: () => h.onRedock() },
     { type: 'separator' },
-    {
-      label: '🔖 打包版本',
-      enabled: false,
-      click: () => { /* noop */ }
-    },
+    { label: `🔖 keepBoard v${app.getVersion()}`, enabled: false },
     { type: 'separator' },
     { label: '❌ 退出 keepBoard', click: () => h.onQuit() }
   ])
