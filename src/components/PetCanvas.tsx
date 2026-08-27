@@ -304,16 +304,15 @@ const TILT_BASE = 0.9
 /** angular velocity caps (deg/frame): main spin ≈ half rev/sec at cap */
 const MAX_VEL_B = 3.2
 const MAX_VEL_A = 1.7
-/** Rainbow caterpillar crawl physics: input kicks a velocity impulse in the
- *  current direction, the node coasts with damping and bounces off each end
- *  with an energy loss — so it glides, overshoots slightly and settles, rather
- *  than snapping one discrete step per press. */
-const CRAWL_IMPULSE = 0.045
-const CRAWL_MAXV = 0.06
-const CRAWL_DAMP = 0.92
-const CRAWL_BOUNCE = 0.55
-/** crawl position below which the node counts as at rest */
-const CRAWL_REST = 0.0015
+/** Rainbow light-sweep physics: input kicks the sweep velocity, the light band
+ *  coasts with damping and bounces off each end with energy loss — so it glides
+ *  left↔right and settles instead of stepping one node per press. */
+const SWEEP_IMPULSE = 0.05
+const SWEEP_MAXV = 0.05
+const SWEEP_DAMP = 0.95
+const SWEEP_BOUNCE = 0.5
+/** sweep velocity below which the light is treated as at rest */
+const SWEEP_REST = 0.0008
 /** Rainbow vertical stretch: a true semicircle is 2:1 wide and would only fill
  *  half the square window; stretching y makes a taller, fuller arch. */
 const RAINBOW_SY = 1.35
@@ -397,9 +396,10 @@ export default function PetCanvas({ size, overlayActive, shape = 'donut', dark =
   /** latest shape, mirrored from the prop so triggerKick (captured once in a
    *  [] effect) still sees the currently selected shape. */
   const shapeRef = useRef(shape)
-  /** Rainbow "caterpillar" crawl: `pos` walks 0 (left end) → 1 (right end) in
-   *  discrete steps, `dir` flips at each end so it shuttles back and forth. */
-  const crawlRef = useRef({ pos: 0, vel: 0 })
+  /** Rainbow light sweep: `pos` walks 0 (left end) → 1 (right end); `vel` is a
+   *  signed coasting velocity (sign = travel direction) that bounces off each
+   *  end with energy loss, so the light glides and settles. */
+  const sweepRef = useRef({ pos: 0, vel: 0 })
   const [dragging, setDragging] = useState(false)
   const [impulse, setImpulse] = useState<InputImpulse | null>(null)
   const [celebration, setCelebration] = useState('')
@@ -408,14 +408,14 @@ export default function PetCanvas({ size, overlayActive, shape = 'donut', dark =
 
   const triggerKick = (s: number, kind: InputImpulse = 'key') => {
     // The rainbow has no spin; input instead kicks a velocity impulse on its
-    // caterpillar crawl — the direction follows the current heading (or +1 when
-    // at rest), and the end-bounce flip is handled by the per-frame physics.
+    // light sweep — the direction follows the current heading (or +1 when at
+    // rest), and the end-bounce flip is handled by the per-frame physics.
     if (shapeRef.current === 'rainbow') {
-      const c = crawlRef.current
+      const c = sweepRef.current
       const dir = c.vel >= 0 ? 1 : -1
-      c.vel += dir * CRAWL_IMPULSE
-      if (c.vel > CRAWL_MAXV) c.vel = CRAWL_MAXV
-      else if (c.vel < -CRAWL_MAXV) c.vel = -CRAWL_MAXV
+      c.vel += dir * SWEEP_IMPULSE
+      if (c.vel > SWEEP_MAXV) c.vel = SWEEP_MAXV
+      else if (c.vel < -SWEEP_MAXV) c.vel = -SWEEP_MAXV
       audioEngine.note(kind, impulseRef.current.combo)
       wakeAnimationRef.current()
       return
@@ -472,8 +472,8 @@ export default function PetCanvas({ size, overlayActive, shape = 'donut', dark =
 
   useEffect(() => {
     shapeRef.current = shape
-    // Re-entering the rainbow restarts its crawl at the left end, at rest.
-    if (shape === 'rainbow') crawlRef.current = { pos: 0, vel: 0 }
+    // Re-entering the rainbow restarts its light sweep at the left end, at rest.
+    if (shape === 'rainbow') sweepRef.current = { pos: 0, vel: 0 }
   }, [shape])
 
   useEffect(() => {
@@ -785,15 +785,15 @@ export default function PetCanvas({ size, overlayActive, shape = 'donut', dark =
       angA.current += (velA.current * Math.PI) / 180
       angB.current += (velB.current * Math.PI) / 180
 
-      // Rainbow caterpillar physics: coast, damp, and bounce off each end with
-      // an energy loss so the node glides and settles with a little overshoot.
+      // Rainbow light-sweep physics: coast, damp, and bounce off each end with
+      // an energy loss so the light glides and settles with a little overshoot.
       if (shape === 'rainbow') {
-        const c = crawlRef.current
+        const c = sweepRef.current
         c.pos += c.vel
-        if (c.pos >= 1) { c.pos = 1; c.vel = -Math.abs(c.vel) * CRAWL_BOUNCE }
-        else if (c.pos <= 0) { c.pos = 0; c.vel = Math.abs(c.vel) * CRAWL_BOUNCE }
-        c.vel *= CRAWL_DAMP
-        if (Math.abs(c.vel) < CRAWL_REST) c.vel = 0
+        if (c.pos >= 1) { c.pos = 1; c.vel = -Math.abs(c.vel) * SWEEP_BOUNCE }
+        else if (c.pos <= 0) { c.pos = 0; c.vel = Math.abs(c.vel) * SWEEP_BOUNCE }
+        c.vel *= SWEEP_DAMP
+        if (Math.abs(c.vel) < SWEEP_REST) c.vel = 0
       }
 
       // A full end-over-end tumble makes the long DNA silhouette collapse to
@@ -1140,45 +1140,44 @@ export default function PetCanvas({ size, overlayActive, shape = 'donut', dark =
         // Rainbow as a set of concentric 3D tube arcs (a "semi-torus" per
         // colour band). Each band is a circular-cross-section tube with its own
         // radius and colour, so the arch reads as solid lit pipes rather than a
-        // flat silhouette. Input drives a caterpillar node that crawls along
-        // the arch (bulging + brightening the tube it sits on), while a small
-        // ripple fans out from the node so the rest of the arch shimmers too.
+        // flat silhouette. Animation is a LIGHT SWEEP: a bright band coasts
+        // along the arch (input kicks its velocity, it glides and bounces off
+        // each end), leaving a fading trail; at rest the whole arch breathes
+        // with a slow radius/brightness pulse.
         const R_OUT = 1.0
         const R_IN = 0.5
         const TUBE = 0.05
         const NBANDS = 8
         const NTH = Math.max(60, Math.min(200, Math.ceil(COLS * 2.4)))
         const NPH = Math.max(8, Math.min(14, Math.ceil(ROWS * 0.1)))
-        const head = crawlRef.current.pos // 0 = left (θ=π), 1 = right (θ=0)
-        const headTheta = Math.PI * (1 - head)
-        const NODE_HALF = 0.22 // crawl bulge half-width, radians
-        const wavePhase = performance.now() * 0.004
+        const now = performance.now()
+        const breathe = 1 + 0.025 * Math.sin(now * 0.0012) // slow idle breath
+        const lightPos = sweepRef.current.pos // 0 = left (θ=π), 1 = right (θ=0)
+        const lightTheta = Math.PI * (1 - lightPos)
+        const lightVel = sweepRef.current.vel // sign = travel direction
+        const LIGHT_HALF = 0.16 // bright core half-width, radians
+        const TRAIL = 0.55      // fading trail length behind the sweep
         for (let b = 0; b < NBANDS; b++) {
-          const R = R_IN + (R_OUT - R_IN) * b / (NBANDS - 1)
+          const R = (R_IN + (R_OUT - R_IN) * b / (NBANDS - 1)) * breathe
           const col = PALETTE[Math.round((b / (NBANDS - 1)) * 13)]
           for (let i = 0; i <= NTH; i++) {
             const theta = Math.PI * (1 - i / NTH) // π (left) → 0 (right)
             const cosT = Math.cos(theta)
             const sinT = Math.sin(theta)
-            // Caterpillar bulge + fan-out ripple. The bulge widens the tube at
-            // the node AND brightens it (boost), so the crawling node reads as a
-            // distinct, glowing segment — not lost among the other bands.
-            const dTheta = theta - headTheta
+            // Light sweep: a Gaussian bright core plus a trail that fades
+            // behind the direction of travel (ahead stays dark), so the light
+            // reads as moving rather than a static glow.
+            const dTheta = theta - lightTheta
             const ad = Math.abs(dTheta)
-            let Rc = R
-            let boost = 0
-            if (ad < NODE_HALF) {
-              const bm = 1 - ad / NODE_HALF
-              Rc += bm * 0.17
-              boost = 0.45 * bm
-            }
-            Rc += 0.014 * Math.sin(ad * 11 - wavePhase)
+            let boost = 0.5 * Math.exp(-(ad * ad) / (2 * LIGHT_HALF * LIGHT_HALF))
+            const behind = lightVel >= 0 ? dTheta : -dTheta // >0 = behind the head
+            if (behind > 0 && behind < TRAIL) boost += 0.28 * (1 - behind / TRAIL)
             for (let j = 0; j <= NPH; j++) {
               const phi = 2 * Math.PI * j / NPH
               const cosP = Math.cos(phi)
               const sinP = Math.sin(phi)
-              const x0 = (Rc + TUBE * cosP) * cosT
-              const y0 = (Rc + TUBE * cosP) * sinT * RAINBOW_SY
+              const x0 = (R + TUBE * cosP) * cosT
+              const y0 = (R + TUBE * cosP) * sinT * RAINBOW_SY
               const z0 = TUBE * sinP
               // Tube normal in object space.
               const nx = cosP * cosT, ny = cosP * sinT, nz = sinP
@@ -1191,7 +1190,7 @@ export default function PetCanvas({ size, overlayActive, shape = 'donut', dark =
               zbuf[idx] = ooz
               // Light from up-left and toward the viewer, so the top and the
               // front of each tube read bright and the underside falls into
-              // shadow — the source of the 3D depth. The crawl node glows.
+              // shadow — the source of the 3D depth. The sweep adds the glow.
               const light = Math.max(0.2, -0.25 * nx + 0.7 * ny - 0.67 * nz) + boost
               addChar(xp, yp, glyph(Math.min(1, light)), col)
             }
@@ -1301,14 +1300,15 @@ export default function PetCanvas({ size, overlayActive, shape = 'donut', dark =
 
       // Once both axes settle, preserve the final frame and stop consuming a
       // browser frame forever. The next input impulse calls wake() below.
-      // The rainbow keeps rendering while its crawl velocity is non-zero, so it
+      // The rainbow keeps rendering while its sweep velocity is non-zero, so it
       // coasts to a stop with inertia instead of freezing the instant input ends.
       if (velB.current !== 0 || velA.current !== 0 ||
-          (shape === 'rainbow' && crawlRef.current.vel !== 0)) {
+          (shape === 'rainbow' && sweepRef.current.vel !== 0)) {
         rafRef.current = requestAnimationFrame(tick)
-      } else if (shape === 'jellyfish') {
-        // Jellyfish has a subtle autonomous pulse, but idles at 12fps instead
-        // of keeping Chromium's 60fps animation clock hot forever.
+      } else if (shape === 'jellyfish' || shape === 'rainbow') {
+        // Jellyfish and rainbow both have a subtle autonomous pulse (tentacle
+        // wave / breathing), but idle at 12fps instead of keeping Chromium's
+        // 60fps animation clock hot forever.
         idleTimerRef.current = window.setTimeout(wake, 83)
       }
     }
