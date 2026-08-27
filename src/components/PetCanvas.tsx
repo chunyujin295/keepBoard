@@ -1140,10 +1140,12 @@ export default function PetCanvas({ size, overlayActive, shape = 'donut', dark =
         // Rainbow as a set of concentric 3D tube arcs (a "semi-torus" per
         // colour band). Each band is a circular-cross-section tube with its own
         // radius and colour, so the arch reads as solid lit pipes rather than a
-        // flat silhouette. Animation is a LIGHT SWEEP: a bright band coasts
-        // along the arch (input kicks its velocity, it glides and bounces off
-        // each end), leaving a fading trail; at rest the whole arch breathes
-        // with a slow radius/brightness pulse.
+        // flat silhouette. Animation is a TRAVELLING WAVE: the whole arch
+        // undulates like a ribbon in the wind — input drives the wave phase
+        // forward (with inertia and end-bounce) and the wave amplitude grows
+        // with speed; at rest it settles into a slow idle swell. The entire
+        // silhouette moving makes the motion unmistakable, unlike a single local
+        // glint on already-colourful pipes.
         const R_OUT = 1.0
         const R_IN = 0.5
         const TUBE = 0.05
@@ -1151,33 +1153,34 @@ export default function PetCanvas({ size, overlayActive, shape = 'donut', dark =
         const NTH = Math.max(60, Math.min(200, Math.ceil(COLS * 2.4)))
         const NPH = Math.max(8, Math.min(14, Math.ceil(ROWS * 0.1)))
         const now = performance.now()
-        const breathe = 1 + 0.025 * Math.sin(now * 0.0012) // slow idle breath
-        const lightPos = sweepRef.current.pos // 0 = left (θ=π), 1 = right (θ=0)
-        const lightTheta = Math.PI * (1 - lightPos)
-        const lightVel = sweepRef.current.vel // sign = travel direction
-        const LIGHT_HALF = 0.16 // bright core half-width, radians
-        const TRAIL = 0.55      // fading trail length behind the sweep
+        // Wave phase: driven by the sweep physics while moving; otherwise a slow
+        // autonomous back-and-forth keeps the breath alive at idle.
+        const wavePos = sweepRef.current.vel !== 0
+          ? sweepRef.current.pos
+          : 0.5 + 0.5 * Math.sin(now * 0.0006)
+        const motion = Math.min(1, Math.abs(sweepRef.current.vel) / SWEEP_MAXV)
+        const WAVE_K = 2.5                              // ~2.5 humps along the arc
+        const amp = 0.04 + 0.13 * motion                // idle swell → full wave
         for (let b = 0; b < NBANDS; b++) {
-          const R = (R_IN + (R_OUT - R_IN) * b / (NBANDS - 1)) * breathe
+          const R = R_IN + (R_OUT - R_IN) * b / (NBANDS - 1)
           const col = PALETTE[Math.round((b / (NBANDS - 1)) * 13)]
           for (let i = 0; i <= NTH; i++) {
-            const theta = Math.PI * (1 - i / NTH) // π (left) → 0 (right)
+            const t = i / NTH
+            const theta = Math.PI * (1 - t) // π (left) → 0 (right)
             const cosT = Math.cos(theta)
             const sinT = Math.sin(theta)
-            // Light sweep: a Gaussian bright core plus a trail that fades
-            // behind the direction of travel (ahead stays dark), so the light
-            // reads as moving rather than a static glow.
-            const dTheta = theta - lightTheta
-            const ad = Math.abs(dTheta)
-            let boost = 0.5 * Math.exp(-(ad * ad) / (2 * LIGHT_HALF * LIGHT_HALF))
-            const behind = lightVel >= 0 ? dTheta : -dTheta // >0 = behind the head
-            if (behind > 0 && behind < TRAIL) boost += 0.28 * (1 - behind / TRAIL)
+            // The wave: radius and brightness both follow a travelling sine, so
+            // crests bulge AND brighten while troughs dim — the whole arch
+            // ripples end to end.
+            const wave = amp * Math.sin(2 * Math.PI * WAVE_K * (t - wavePos))
+            const Rc = R * (1 + wave)
+            const boost = wave * 1.3
             for (let j = 0; j <= NPH; j++) {
               const phi = 2 * Math.PI * j / NPH
               const cosP = Math.cos(phi)
               const sinP = Math.sin(phi)
-              const x0 = (R + TUBE * cosP) * cosT
-              const y0 = (R + TUBE * cosP) * sinT * RAINBOW_SY
+              const x0 = (Rc + TUBE * cosP) * cosT
+              const y0 = (Rc + TUBE * cosP) * sinT * RAINBOW_SY
               const z0 = TUBE * sinP
               // Tube normal in object space.
               const nx = cosP * cosT, ny = cosP * sinT, nz = sinP
@@ -1190,7 +1193,7 @@ export default function PetCanvas({ size, overlayActive, shape = 'donut', dark =
               zbuf[idx] = ooz
               // Light from up-left and toward the viewer, so the top and the
               // front of each tube read bright and the underside falls into
-              // shadow — the source of the 3D depth. The sweep adds the glow.
+              // shadow — the source of the 3D depth. The wave adds the ripple.
               const light = Math.max(0.2, -0.25 * nx + 0.7 * ny - 0.67 * nz) + boost
               addChar(xp, yp, glyph(Math.min(1, light)), col)
             }
