@@ -196,6 +196,10 @@ npm run package:linux    # Linux：AppImage + deb
 ### 🔧推荐的配置（v0.13.0)
 
 <p align="center">
+  <img src="./docs/img/keepBoard2.gif" alt="keepBoard icon" width ="180">
+</p>
+
+<p align="center">
   <img src="./docs/img/1.png" alt="keepBoard icon" width ="400"> 
 </p>
 
