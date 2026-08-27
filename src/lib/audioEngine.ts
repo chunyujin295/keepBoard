@@ -155,15 +155,15 @@ const THEMES: Record<Exclude<AudioTheme, 'none'>, Theme> = {
     octSpread: 0,
     intensityBoost: 12,
     wave: 'sine',
-    keyDurMin: 0.6,
-    keyDurMax: 1.0,
-    attack: 0.06,
+    keyDurMin: 0.8,
+    keyDurMax: 1.3,
+    attack: 0.2,
     glide: false,
     vibrato: false,
     vibratoDepth: 0,
     vibratoRate: 0,
     clickOct: 12,
-    clickDur: 0.18,
+    clickDur: 0.22,
     clickDrop: 0.9,
     wheelSweepMin: 400,
     wheelSweepMax: 900,
@@ -354,18 +354,21 @@ class AudioEngine {
 
   /** Church pipe-organ voice: additive synthesis with pure sine partials
    *  (1f, 2f, 3f, 4f, 6f) whose amplitudes fall off with the partial number —
-   *  the classic "stopped diapason" hollow timbre. A slow tremolo (amplitude
-   *  wobble) gives it the floating, ethereal cathedral air. */
+   *  the classic "stopped diapason" hollow timbre. Each partial is doubled and
+   *  slightly detuned for a slow chorus shimmer, a soft filtered-noise "air"
+   *  swell rides under the note, and a long release tail lets it drift away —
+   *  together reading as a chord floating high in a cathedral. */
   private organ(f0: number, f1: number, at: number, dur: number, level: number, attack: number, vibRate = 0) {
     const ctx = this.ctx!
     const t = ctx.currentTime + at
     // [harmonic number, relative amplitude] — 1f dominates, higher partials thin out.
-    const PARTIALS: [number, number][] = [[1, 1], [2, 0.5], [3, 0.33], [4, 0.2], [6, 0.12]]
+    const PARTIALS: [number, number][] = [[1, 1], [2, 0.45], [3, 0.28], [4, 0.16], [6, 0.09]]
+    const RELEASE = dur + 1.1 // long tail so notes fade into the echo
 
     const env = ctx.createGain()
     env.gain.setValueAtTime(0, t)
     env.gain.linearRampToValueAtTime(level, t + attack)
-    env.gain.exponentialRampToValueAtTime(0.0001, t + dur + 0.4)
+    env.gain.exponentialRampToValueAtTime(0.0001, t + RELEASE)
 
     // Slow tremolo — amplitude wobble, the "floating" cathedral shimmer.
     let trem: OscillatorNode | null = null
@@ -378,23 +381,49 @@ class AudioEngine {
       trem.connect(tremGain)
       tremGain.connect(env.gain)
       trem.start(t)
-      trem.stop(t + dur + 0.5)
+      trem.stop(t + RELEASE + 0.1)
     }
 
+    // Each partial is voiced twice at ±5 cents — the beating between the two
+    // copies is what makes the sound "shimmer" instead of sitting dead-center.
     for (const [n, amp] of PARTIALS) {
-      const o = ctx.createOscillator()
-      o.type = 'sine'
-      o.frequency.setValueAtTime(Math.max(1, f0 * n), t)
-      if (f1 !== f0) o.frequency.exponentialRampToValueAtTime(Math.max(1, f1 * n), t + dur)
-      const g = ctx.createGain()
-      g.gain.value = amp
-      o.connect(g)
-      g.connect(env)
-      o.start(t)
-      o.stop(t + dur + 0.5)
+      for (const det of [-5, 5]) {
+        const o = ctx.createOscillator()
+        o.type = 'sine'
+        o.detune.value = det
+        o.frequency.setValueAtTime(Math.max(1, f0 * n), t)
+        if (f1 !== f0) o.frequency.exponentialRampToValueAtTime(Math.max(1, f1 * n), t + dur)
+        const g = ctx.createGain()
+        g.gain.value = amp
+        o.connect(g)
+        g.connect(env)
+        o.start(t)
+        o.stop(t + RELEASE + 0.1)
+      }
     }
 
     this.route(env)
+
+    // Air swell: a wide, soft noise wash that fades in and out with the note,
+    // giving the "floating in the sky" sense of space around the chord.
+    if (this.noise) {
+      const src = ctx.createBufferSource()
+      src.buffer = this.noise
+      src.loop = true
+      const lp = ctx.createBiquadFilter()
+      lp.type = 'lowpass'
+      lp.frequency.setValueAtTime(1200, t)
+      lp.frequency.exponentialRampToValueAtTime(600, t + RELEASE)
+      const airEnv = ctx.createGain()
+      airEnv.gain.setValueAtTime(0, t)
+      airEnv.gain.linearRampToValueAtTime(level * 0.06, t + attack)
+      airEnv.gain.exponentialRampToValueAtTime(0.0001, t + RELEASE)
+      src.connect(lp)
+      lp.connect(airEnv)
+      this.route(airEnv)
+      src.start(t)
+      src.stop(t + RELEASE + 0.05)
+    }
   }
 
   /** Route a node to the master with random stereo pan and optional echo. */
