@@ -276,7 +276,7 @@ const FIT = {
   heart: { k: 1.9, ox: 0.5, oy: 0.5 },
   saturn: { k: 1.02, ox: 0.5, oy: 0.5 },
   jellyfish: { k: 1.48, ox: 0.5, oy: 0.48 },
-  rainbow: { k: 2.3, ox: 0.5, oy: 0.68 }
+  rainbow: { k: 2.3, ox: 0.5, oy: 0.9 }
 } as const
 
 /** Max spacing between adjacent surface samples, in cells. The old hardcoded
@@ -1151,7 +1151,7 @@ export default function PetCanvas({ size, overlayActive, shape = 'donut', dark =
         const NPH = Math.max(8, Math.min(14, Math.ceil(ROWS * 0.1)))
         const head = crawlRef.current.pos // 0 = left (θ=π), 1 = right (θ=0)
         const headTheta = Math.PI * (1 - head)
-        const NODE_HALF = 0.16 // crawl bulge half-width, radians
+        const NODE_HALF = 0.22 // crawl bulge half-width, radians
         const wavePhase = performance.now() * 0.004
         for (let b = 0; b < NBANDS; b++) {
           const R = R_IN + (R_OUT - R_IN) * b / (NBANDS - 1)
@@ -1160,12 +1160,19 @@ export default function PetCanvas({ size, overlayActive, shape = 'donut', dark =
             const theta = Math.PI * (1 - i / NTH) // π (left) → 0 (right)
             const cosT = Math.cos(theta)
             const sinT = Math.sin(theta)
-            // Caterpillar bulge + fan-out ripple, both in tube radius.
+            // Caterpillar bulge + fan-out ripple. The bulge widens the tube at
+            // the node AND brightens it (boost), so the crawling node reads as a
+            // distinct, glowing segment — not lost among the other bands.
             const dTheta = theta - headTheta
-            let Rc = R
             const ad = Math.abs(dTheta)
-            if (ad < NODE_HALF) Rc += (1 - ad / NODE_HALF) * 0.1
-            Rc += 0.012 * Math.sin(ad * 11 - wavePhase)
+            let Rc = R
+            let boost = 0
+            if (ad < NODE_HALF) {
+              const bm = 1 - ad / NODE_HALF
+              Rc += bm * 0.17
+              boost = 0.45 * bm
+            }
+            Rc += 0.014 * Math.sin(ad * 11 - wavePhase)
             for (let j = 0; j <= NPH; j++) {
               const phi = 2 * Math.PI * j / NPH
               const cosP = Math.cos(phi)
@@ -1184,8 +1191,8 @@ export default function PetCanvas({ size, overlayActive, shape = 'donut', dark =
               zbuf[idx] = ooz
               // Light from up-left and toward the viewer, so the top and the
               // front of each tube read bright and the underside falls into
-              // shadow — the source of the 3D depth.
-              const light = Math.max(0.2, -0.25 * nx + 0.7 * ny - 0.67 * nz)
+              // shadow — the source of the 3D depth. The crawl node glows.
+              const light = Math.max(0.2, -0.25 * nx + 0.7 * ny - 0.67 * nz) + boost
               addChar(xp, yp, glyph(Math.min(1, light)), col)
             }
           }
