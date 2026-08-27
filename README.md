@@ -193,6 +193,24 @@ npm run package:linux    # Linux：AppImage + deb
 
 这些自定义外观会出现在「配色」菜单里、内置预设下方（用一条横线隔开）。选中后即生效；编辑文件后重新点一次该外观即可刷新。文件位置：Windows `%APPDATA%\keepboard\keepboard-look.json`，Linux `~/.config/keepboard/keepboard-look.json`。
 
+### 🔧推荐的配置（v0.13.0)
+
+<p align="center">
+  <img src="./docs/img/1.png" alt="keepBoard icon" >
+</p>
+
+<p align="center">
+  <img src="./docs/img/2.png" alt="keepBoard icon" >
+</p>
+
+<p align="center">
+  <img src="./docs/img/3.png" alt="keepBoard icon" >
+</p>
+
+<p align="center">
+  <img src="./docs/img/4.png" alt="keepBoard icon" >
+</p>
+
 ## 📁 项目结构
 
 ```
