@@ -86,6 +86,7 @@ export function buildTrayMenu(settings: Settings, h: MenuHandlers, customLooks: 
   const curOpacity = settings.opacity ?? 1
   const curVolume = settings.volume ?? 0.5
   const curAudioTheme = settings.audioTheme ?? (settings.audioEnabled ? 'ghost' : 'none')
+  const audioOff = curAudioTheme === 'none'
   const curSize = settings.windowSize || 220
   const curShape = settings.shape || 'donut'
   const curMotion = settings.motionPreset ?? (settings.motionEffects === false ? 'off' : 'medium')
@@ -238,20 +239,13 @@ export function buildTrayMenu(settings: Settings, h: MenuHandlers, customLooks: 
     },
     {
       label: '🔉 音量',
-      submenu: [
-        {
-          label: '🔇 静音',
-          type: 'radio' as const,
-          checked: curVolume <= 0.01,
-          click: () => h.onVolume(0)
-        },
-        ...VOLUME_LEVELS.map((v) => ({
-          label: `${Math.round(v * 100)}%`,
-          type: 'radio' as const,
-          checked: Math.abs(curVolume - v) < 0.01,
-          click: () => h.onVolume(v)
-        }))
-      ]
+      enabled: !audioOff,
+      submenu: VOLUME_LEVELS.map((v) => ({
+        label: `${Math.round(v * 100)}%`,
+        type: 'radio' as const,
+        checked: Math.abs(curVolume - v) < 0.01,
+        click: () => h.onVolume(v)
+      }))
     },
     { label: '📌 立即重新吸附', click: () => h.onRedock() },
     { type: 'separator' },
