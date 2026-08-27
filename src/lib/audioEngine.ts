@@ -29,8 +29,6 @@ interface Theme {
   vibrato: boolean
   vibratoDepth: number
   vibratoRate: number
-  wheelSweepMin: number
-  wheelSweepMax: number
   breath: boolean
   harmony: boolean
   echo: boolean
@@ -55,8 +53,6 @@ const THEMES: Record<Exclude<AudioTheme, 'none'>, Theme> = {
     vibrato: true,
     vibratoDepth: 0.04,
     vibratoRate: 5,
-    wheelSweepMin: 300,
-    wheelSweepMax: 900,
     breath: true,
     harmony: false,
     echo: true,
@@ -78,8 +74,6 @@ const THEMES: Record<Exclude<AudioTheme, 'none'>, Theme> = {
     vibrato: false,
     vibratoDepth: 0,
     vibratoRate: 0,
-    wheelSweepMin: 150,
-    wheelSweepMax: 300,
     breath: false,
     harmony: false,
     echo: false,
@@ -101,8 +95,6 @@ const THEMES: Record<Exclude<AudioTheme, 'none'>, Theme> = {
     vibrato: false,
     vibratoDepth: 0,
     vibratoRate: 0,
-    wheelSweepMin: 400,
-    wheelSweepMax: 1200,
     breath: false,
     harmony: false,
     echo: false,
@@ -124,8 +116,6 @@ const THEMES: Record<Exclude<AudioTheme, 'none'>, Theme> = {
     vibrato: false,
     vibratoDepth: 0,
     vibratoRate: 0,
-    wheelSweepMin: 500,
-    wheelSweepMax: 1500,
     breath: false,
     harmony: false,
     echo: true,
@@ -147,8 +137,6 @@ const THEMES: Record<Exclude<AudioTheme, 'none'>, Theme> = {
     vibrato: false,
     vibratoDepth: 0,
     vibratoRate: 0,
-    wheelSweepMin: 400,
-    wheelSweepMax: 900,
     breath: false,
     harmony: false,
     echo: true,
@@ -297,13 +285,8 @@ class AudioEngine {
   }
 
   private wheel() {
-    const th = THEMES[this.theme]
-    const up = Math.random() < 0.5
-    const f0 = up ? th.wheelSweepMin : th.wheelSweepMax
-    const f1 = up ? th.wheelSweepMax : th.wheelSweepMin
-    if (th.organ) this.organ(f0, f1, 0, 0.28, 0.35, 0.03, 0)
-    else this.voice(th.wave, f0, f1, 0, 0.28, 0.35, 0)
-    if (th.breath) this.breath(up ? 800 : 500, up ? 1500 : 250, 0.28, 0.1)
+    // Scroll wheel uses the same short pluck as a click — one consistent voice.
+    this.pluck(true, 0)
   }
 
   /** One oscillator voice: start at f0, glide to f1, with an attack/decay

@@ -68,7 +68,8 @@ const LOOK_PRESETS: { id: string; label: string }[] = [
 ]
 
 export const OPACITY_LEVELS = [1, 0.75, 0.5, 0.25]
-const VOLUME_LEVELS = [1, 0.75, 0.5, 0.25]
+// Volume in 10% steps (0.1–1.0); 0 is the mute level and sits above as its own item.
+const VOLUME_LEVELS = [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0]
 const SIZE_LEVELS = [180, 240, 320, 400, 480, 640]
 
 // Sound themes — 'none' sits at the top and disables audio.
@@ -237,12 +238,20 @@ export function buildTrayMenu(settings: Settings, h: MenuHandlers, customLooks: 
     },
     {
       label: '🔉 音量',
-      submenu: VOLUME_LEVELS.map((v) => ({
-        label: `${Math.round(v * 100)}%`,
-        type: 'radio' as const,
-        checked: Math.abs(curVolume - v) < 0.01,
-        click: () => h.onVolume(v)
-      }))
+      submenu: [
+        {
+          label: '🔇 静音',
+          type: 'radio' as const,
+          checked: curVolume <= 0.01,
+          click: () => h.onVolume(0)
+        },
+        ...VOLUME_LEVELS.map((v) => ({
+          label: `${Math.round(v * 100)}%`,
+          type: 'radio' as const,
+          checked: Math.abs(curVolume - v) < 0.01,
+          click: () => h.onVolume(v)
+        }))
+      ]
     },
     { label: '📌 立即重新吸附', click: () => h.onRedock() },
     { type: 'separator' },
