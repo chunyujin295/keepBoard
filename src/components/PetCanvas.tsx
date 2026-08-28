@@ -306,6 +306,10 @@ const TILT_BASE = 0.9
 /** angular velocity caps (deg/frame): main spin ≈ half rev/sec at cap */
 const MAX_VEL_B = 3.2
 const MAX_VEL_A = 1.7
+/** Manual input fills a target-speed reservoir. The renderer eases toward it,
+ * then lets it drain after input stops, giving manual mode a smooth coast. */
+const MANUAL_TARGET_DECAY = 0.97
+const MANUAL_STEERING = 0.12
 /** Rainbow light-sweep physics: input kicks the sweep velocity, the light band
  *  coasts with damping and bounces off each end with energy loss — so it glides
  *  left↔right and settles instead of stepping one node per press. */
@@ -398,6 +402,8 @@ export default function PetCanvas({ size, overlayActive, shape = 'donut', dark =
   /** main spin + secondary tumble, deg/frame — 0 at rest, capped */
   const velB = useRef(0)
   const velA = useRef(0)
+  const manualTargetB = useRef(0)
+  const manualTargetA = useRef(0)
   const dragRef = useRef<DragState | null>(null)
   const ignoreMouseRef = useRef(false)
   const hitGridRef = useRef<{ mask: Uint8Array; cols: number; rows: number } | null>(null)
@@ -454,12 +460,12 @@ export default function PetCanvas({ size, overlayActive, shape = 'donut', dark =
     // rest. Rolling per event would make a burst of typing flip direction every
     // press ("左一下右一下") — this way one spin session keeps one direction,
     // and the next fresh start picks a new random one.
-    if (randomSpinRef.current && velB.current === 0 && velA.current === 0) {
+    if (randomSpinRef.current && manualTargetB.current === 0 && manualTargetA.current === 0 && velB.current === 0 && velA.current === 0) {
       spinDirRef.current = Math.random() < 0.5 ? -1 : 1
     }
     const dir = randomSpinRef.current ? spinDirRef.current : 1
-    velB.current = Math.max(-MAX_VEL_B, Math.min(MAX_VEL_B, velB.current + dir * 1.0 * s))
-    velA.current = Math.max(-MAX_VEL_A, Math.min(MAX_VEL_A, velA.current + dir * 0.45 * s))
+    manualTargetB.current = Math.max(-MAX_VEL_B, Math.min(MAX_VEL_B, manualTargetB.current + dir * 1.0 * s))
+    manualTargetA.current = Math.max(-MAX_VEL_A, Math.min(MAX_VEL_A, manualTargetA.current + dir * 0.45 * s))
     const motionMs = MOTION_MS[motionPresetRef.current ?? 'medium'] ?? MOTION_MS.medium
     if (showVisual && motionMs > 0) {
       if (kind === 'key') {
@@ -500,6 +506,10 @@ export default function PetCanvas({ size, overlayActive, shape = 'donut', dark =
 
   useEffect(() => {
     driveModeRef.current = driveMode
+    if (driveMode !== 'manual') {
+      manualTargetB.current = 0
+      manualTargetA.current = 0
+    }
     autoDirectionRef.current = randomSpin ? (Math.random() < 0.5 ? -1 : 1) : 1
     autoNextTurnRef.current = performance.now()
     // A manual pet can have stopped its demand-driven render loop; wake it as
@@ -836,9 +846,15 @@ export default function PetCanvas({ size, overlayActive, shape = 'donut', dark =
         velB.current += (dir * auto.velB - velB.current) * auto.steering
         velA.current += (dir * auto.velA - velA.current) * auto.steering
       } else {
-        // Manual gear retains the original input kick + coast physics.
-        velB.current *= 0.94
-        velA.current *= 0.94
+        // Input changes the target speed; actual velocity follows it rather
+        // than jumping instantly. Once input ceases, the target drains away
+        // and the pet glides to rest without the old pulse-by-pulse feel.
+        manualTargetB.current *= MANUAL_TARGET_DECAY
+        manualTargetA.current *= MANUAL_TARGET_DECAY
+        if (Math.abs(manualTargetB.current) < 0.01) manualTargetB.current = 0
+        if (Math.abs(manualTargetA.current) < 0.01) manualTargetA.current = 0
+        velB.current += (manualTargetB.current - velB.current) * MANUAL_STEERING
+        velA.current += (manualTargetA.current - velA.current) * MANUAL_STEERING
         if (Math.abs(velB.current) < 0.02) velB.current = 0
         if (Math.abs(velA.current) < 0.02) velA.current = 0
       }
