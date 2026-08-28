@@ -10,6 +10,8 @@ type RendererOptions = {
   rows: number
   cellWidth: number
   cellHeight: number
+  glyphWidth: number
+  glyphHeight: number
   cssWidth: number
   cssHeight: number
   chars: string
@@ -25,11 +27,12 @@ layout(location=1) in vec3 a_instance;
 layout(location=2) in vec3 a_color;
 uniform vec2 u_canvas;
 uniform vec2 u_cell;
+uniform vec2 u_glyph;
 uniform float u_glyph_count;
 out vec2 v_uv;
 out vec3 v_color;
 void main() {
-  vec2 pixel = (a_instance.xy + a_corner) * u_cell;
+  vec2 pixel = a_instance.xy * u_cell + a_corner * u_glyph;
   vec2 clip = vec2(pixel.x / u_canvas.x * 2.0 - 1.0,
                    1.0 - pixel.y / u_canvas.y * 2.0);
   gl_Position = vec4(clip, 0.0, 1.0);
@@ -97,6 +100,7 @@ export class WebGLGlyphRenderer {
   private texture: WebGLTexture
   private uCanvas: WebGLUniformLocation | null
   private uCell: WebGLUniformLocation | null
+  private uGlyph: WebGLUniformLocation | null
   private uGlyphCount: WebGLUniformLocation | null
   private data = new Float32Array(0)
   private colors = new Map<string, [number, number, number]>()
@@ -124,6 +128,7 @@ export class WebGLGlyphRenderer {
     this.gpuProgram = program(gl)
     this.uCanvas = gl.getUniformLocation(this.gpuProgram, 'u_canvas')
     this.uCell = gl.getUniformLocation(this.gpuProgram, 'u_cell')
+    this.uGlyph = gl.getUniformLocation(this.gpuProgram, 'u_glyph')
     this.uGlyphCount = gl.getUniformLocation(this.gpuProgram, 'u_glyph_count')
     const vao = gl.createVertexArray()
     const quadBuffer = gl.createBuffer()
@@ -152,8 +157,8 @@ export class WebGLGlyphRenderer {
 
     const atlas = document.createElement('canvas')
     const scale = 3
-    const tileW = Math.max(16, Math.ceil(options.cellWidth * scale))
-    const tileH = Math.max(16, Math.ceil(options.cellHeight * scale))
+    const tileW = Math.max(16, Math.ceil(options.glyphWidth * scale))
+    const tileH = Math.max(16, Math.ceil(options.glyphHeight * scale))
     atlas.width = tileW * this.glyphCount
     atlas.height = tileH
     const ctx = atlas.getContext('2d')!
@@ -207,6 +212,7 @@ export class WebGLGlyphRenderer {
     gl.bindVertexArray(this.vao)
     gl.uniform2f(this.uCanvas, this.options.cssWidth, this.options.cssHeight)
     gl.uniform2f(this.uCell, this.options.cellWidth, this.options.cellHeight)
+    gl.uniform2f(this.uGlyph, this.options.glyphWidth, this.options.glyphHeight)
     gl.uniform1f(this.uGlyphCount, this.glyphCount)
     gl.bindBuffer(gl.ARRAY_BUFFER, this.instanceBuffer)
     gl.bufferData(gl.ARRAY_BUFFER, this.data.subarray(0, needed), gl.DYNAMIC_DRAW)

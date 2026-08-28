@@ -8,9 +8,12 @@ import { fileURLToPath } from 'node:url'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const ROOT = path.resolve(__dirname, '..')
-const ver = fs.readFileSync(path.join(__dirname, 'version.txt'), 'utf8').trim()
-if (!/^\d+\.\d+\.\d+/.test(ver)) {
-  console.error(`invalid version in scripts/version.txt: "${ver}"`)
+const rawVer = fs.readFileSync(path.join(__dirname, 'version.txt'), 'utf8').trim()
+// The source file follows the user-facing `v0.14.0` convention; package.json
+// requires plain SemVer, so only the optional leading v is removed on sync.
+const ver = rawVer.replace(/^v/, '')
+if (!/^\d+\.\d+\.\d+$/.test(ver)) {
+  console.error(`invalid version in scripts/version.txt: "${rawVer}"`)
   process.exit(1)
 }
 const pkgPath = path.join(ROOT, 'package.json')

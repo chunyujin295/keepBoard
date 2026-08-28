@@ -20,6 +20,11 @@ type StoreShape = {
 
 function normalizeSettings(raw: Partial<Settings> | undefined): Settings {
   const settings = { ...DEFAULT_SETTINGS, ...(raw ?? {}) }
+  // v0.13.2 briefly shipped the underwater scene as `aquarium`; retain users'
+  // selection while replacing it with the focused single-fish shape.
+  if ((raw as Record<string, unknown> | undefined)?.shape === 'aquarium') {
+    settings.shape = 'fish'
+  }
   const rawMotionPreset = (raw as Record<string, unknown> | undefined)?.motionPreset
   if (rawMotionPreset !== 'off' && rawMotionPreset !== 'short' && rawMotionPreset !== 'medium' && rawMotionPreset !== 'long') {
     settings.motionPreset = raw?.motionEffects === false ? 'off' : DEFAULT_SETTINGS.motionPreset

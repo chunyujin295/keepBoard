@@ -278,7 +278,8 @@ const FIT = {
   heart: { k: 1.9, ox: 0.5, oy: 0.5 },
   saturn: { k: 1.02, ox: 0.5, oy: 0.5 },
   jellyfish: { k: 1.48, ox: 0.5, oy: 0.48 },
-  rainbow: { k: 2.3, ox: 0.5, oy: 0.9 }
+  rainbow: { k: 2.3, ox: 0.5, oy: 0.9 },
+  fish: { k: 1.16, ox: 0.5, oy: 0.5 }
 } as const
 
 /** Max spacing between adjacent surface samples, in cells. The old hardcoded
@@ -733,11 +734,20 @@ export default function PetCanvas({ size, overlayActive, shape = 'donut', dark =
     // scaling x by 2 for terminal cells — same idea, measured instead of guessed.
     // Glyph size scales down a little as the window grows, so a large window
     // renders finer (the globe in particular needs the resolution).
-    const densityScale = density === 'dense' ? 0.78 : density === 'sparse' ? 1.22 : 1
-    const FONT_PX = Math.max(3.4, Math.min(7.4, (6.6 - (sz - 220) / 420 * 2.4) * densityScale))
+    // Density controls grid pitch separately from glyph size. In dense mode
+    // glyphs overlap slightly, filling holes between characters so rounded
+    // ASCII/dot/line surfaces read as solid volume instead of loose points.
+    // All three modes keep the surface filled. Sparse has fewer, deliberately
+    // larger glyphs; dense has smaller glyphs on a much tighter, overlapping
+    // grid. The pitch-to-glyph ratio stays below 1 in every mode.
+    const fontScale = density === 'dense' ? 0.82 : density === 'sparse' ? 1.28 : 1
+    const pitchScale = density === 'dense' ? 0.62 : density === 'sparse' ? 1.14 : 0.86
+    const FONT_PX = Math.max(3.4, Math.min(7.4, (6.6 - (sz - 220) / 420 * 2.4) * fontScale))
     measureCtx.font = `${FONT_PX}px Consolas, "Courier New", monospace`
-    const CELL_W = measureCtx.measureText('M').width || FONT_PX * 0.6
-    const CELL_H = FONT_PX * LINE_RATIO
+    const GLYPH_W = measureCtx.measureText('M').width || FONT_PX * 0.6
+    const GLYPH_H = FONT_PX * LINE_RATIO
+    const CELL_W = GLYPH_W * pitchScale
+    const CELL_H = GLYPH_H * pitchScale
     const COLS = Math.max(20, Math.round(sz / CELL_W))
     const ROWS = Math.max(20, Math.round(sz / CELL_H))
     const zbuf = new Float32Array(COLS * ROWS)
@@ -760,10 +770,13 @@ export default function PetCanvas({ size, overlayActive, shape = 'donut', dark =
     const ICE = GLOBE.ice(tone)
     const CHARS = resolved.chars ?? (CHARSETS[charset] ?? CHARSETS.ascii)
     const gamma = resolved.gamma ?? 0.6
+    const glyphContrast = charset === 'block' ? 1 : 1.22
     const NCH = CHARS.length
     /** normalised shade in [0,1] -> ramp index */
-    const glyph = (s: number) =>
-      CHARS[Math.min(NCH - 1, Math.max(0, (Math.pow(s, gamma) * NCH) | 0))]
+    const glyph = (s: number) => {
+      const contrasted = Math.max(0, Math.min(1, (s - (1 - 1 / glyphContrast) * 0.5) * glyphContrast))
+      return CHARS[Math.min(NCH - 1, Math.max(0, (Math.pow(contrasted, gamma) * NCH) | 0))]
+    }
 
     let gpu: WebGLGlyphRenderer | null = null
     const forceCanvas2d = import.meta.env.DEV &&
@@ -772,6 +785,7 @@ export default function PetCanvas({ size, overlayActive, shape = 'donut', dark =
       try {
         gpu = WebGLGlyphRenderer.create(canvas, {
           cols: COLS, rows: ROWS, cellWidth: CELL_W, cellHeight: CELL_H,
+          glyphWidth: GLYPH_W, glyphHeight: GLYPH_H,
           cssWidth: sz, cssHeight: sz, chars: CHARS, fontPx: FONT_PX,
           dark, glow
         })
@@ -1282,6 +1296,126 @@ export default function PetCanvas({ size, overlayActive, shape = 'donut', dark =
             }
           }
         }
+      } else if (shape === 'fish') {
+        // A single volumetric fish. Surface samples preserve real perspective,
+        // lighting and self-occlusion; the tail and fins animate around the
+        // body so it feels like it is swimming rather than merely rotating.
+        const now = performance.now()
+        // Swim in one direction only: once the fish has fully exited right,
+        // it is reset off-screen on the left before the next pass. This avoids
+        // the visually unnatural backward-swimming return leg.
+        const travel = (now * 0.000055) % 1
+        const yaw = Math.sin(now * 0.00038) * 0.18 + angB.current * 0.16
+        const pitch = Math.sin(now * 0.00061) * 0.12 + angA.current * 0.08
+        const cosY = Math.cos(yaw), sinY = Math.sin(yaw)
+        const cosP = Math.cos(pitch), sinP = Math.sin(pitch)
+        const swimX = (travel * 2 - 1) * 3.8
+        const swimY = Math.sin(now * 0.00047) * 0.11
+        const plotFish = (x0: number, y0: number, z0: number, nx0: number, ny0: number, nz0: number, shade: number, col: string) => {
+          const x1 = x0 * cosY + z0 * sinY + swimX
+          const z1 = -x0 * sinY + z0 * cosY
+          const y = y0 * cosP - z1 * sinP + swimY
+          const z = y0 * sinP + z1 * cosP
+          const ooz = 1 / (K2 + z)
+          const xp = Math.round(cx + K1x * ooz * x1)
+          const yp = Math.round(cy - K1y * ooz * y)
+          if (xp < 0 || yp < 0 || xp >= COLS || yp >= ROWS) return
+          const idx = yp * COLS + xp
+          if (ooz <= zbuf[idx]) return
+          zbuf[idx] = ooz
+          const nnx = nx0 * cosY + nz0 * sinY
+          const nnz1 = -nx0 * sinY + nz0 * cosY
+          const nny = ny0 * cosP - nnz1 * sinP
+          const nnz = ny0 * sinP + nnz1 * cosP
+          const light = Math.max(0.12, -0.38 * nnx + 0.58 * nny - 0.72 * nnz)
+          addChar(xp, yp, glyph(Math.min(1, shade * light)), col)
+        }
+        // Finer character grids get a correspondingly denser mesh, preserving
+        // the fish's silhouette and lighting detail on large window sizes.
+        const slices = Math.max(48, Math.min(260, Math.round(COLS * 1.05)))
+        const rings = Math.max(18, Math.min(72, Math.round(ROWS * 0.45)))
+        for (let i = 0; i <= slices; i++) {
+          const q = -0.96 + 1.92 * i / slices
+          // The rear half flexes more than the head, producing a travelling
+          // body wave that feeds naturally into the tail beat.
+          const rear = Math.pow((1 - q) * 0.5, 1.65)
+          const bodyWave = Math.sin(now * 0.008 - q * 3.5) * 0.18 * rear
+          const headBulge = 1 + 0.12 * Math.exp(-Math.pow((q - 0.52) / 0.28, 2))
+          const taper = (1 - 0.15 * Math.max(0, q)) * headBulge
+          const radius = 0.62 * Math.sqrt(Math.max(0, 1 - q * q)) * taper
+          for (let j = 0; j < rings; j++) {
+            const phi = 2 * Math.PI * j / rings
+            const x = 1.42 * q
+            const y = radius * Math.cos(phi) + bodyWave
+            const z = radius * 0.78 * Math.sin(phi)
+            const nl = Math.hypot(q / 1.42, y / 0.62, z / 0.49) || 1
+            const band = (0.32 + q * 0.18 + j / rings * 0.12 + 1) % 1
+            plotFish(x, y, z, q / 1.42 / nl, (y - bodyWave) / 0.62 / nl, z / 0.49 / nl, 0.95, PALETTE[(band * 16) | 0])
+          }
+        }
+        const tailWave = Math.sin(now * 0.009) * 0.2
+        const tailSteps = Math.max(16, Math.min(48, Math.round(ROWS * 0.28)))
+        const tailWidthSteps = Math.max(14, Math.min(40, Math.round(COLS * 0.16)))
+        for (let ti = 0; ti <= tailSteps; ti++) {
+          const t = ti / tailSteps
+          for (let si = 0; si <= tailWidthSteps; si++) {
+            const s = -1 + 2 * si / tailWidthSteps
+            const x = -1.23 - 0.62 * t
+            const y = s * (0.08 + 0.58 * t) + tailWave * (0.35 + t)
+            const z = 0.12 * Math.sin(s * Math.PI) + tailWave * t
+            plotFish(x, y, z, -0.7, s, 0.2, 0.9, PALETTE[3])
+          }
+        }
+        const finSteps = Math.max(14, Math.min(42, Math.round(COLS * 0.15)))
+        for (let fi = 0; fi <= finSteps; fi++) {
+          const t = fi / finSteps
+          // A broad dorsal fin and layered pectoral fin surfaces instead of
+          // single strokes give the fish a more sculpted silhouette.
+          for (let w = 0; w <= 5; w++) {
+            const width = w / 5
+            plotFish(-0.5 + t * 1.1, 0.38 + t * 0.28 + width * (0.28 - t * 0.14), tailWave * 0.32, 0, 1, 0.2, 0.78, PALETTE[11])
+            plotFish(0.08 + t * 0.52 + width * 0.2, -0.22 - t * 0.24 - width * 0.18, -0.2 - tailWave * (0.2 + width * 0.2), 0, -0.6, -0.6, 0.7, PALETTE[13])
+          }
+        }
+        // Gill cover and lateral line supply the small structural cues that
+        // make the illuminated body read as fish anatomy rather than a blob.
+        for (let gi = 0; gi <= rings / 2; gi++) {
+          const phi = -1.12 + 2.24 * gi / (rings / 2)
+          const x = 0.67
+          const r = 0.53 * (1 + 0.08 * Math.cos(phi))
+          plotFish(x, r * Math.cos(phi), r * 0.7 * Math.sin(phi), 0.8, Math.cos(phi), Math.sin(phi), 0.66, PALETTE[2])
+        }
+        for (let li = 0; li <= slices; li += 2) {
+          const q = -0.58 + 1.42 * li / slices
+          const wave = Math.sin(now * 0.008 - q * 3.5) * 0.18 * Math.pow((1 - q) * 0.5, 1.65)
+          plotFish(1.42 * q, wave - 0.06, -0.48 * Math.sqrt(Math.max(0, 1 - q * q)), 0, 0, -1, 0.55, PALETTE[2])
+        }
+        // Snout and mouth sit ahead of the eyes and remain visible through the
+        // shared depth buffer as the fish turns.
+        for (let mi = 0; mi < 8; mi++) {
+          const a = -0.22 + mi * 0.065
+          plotFish(1.39, a, -0.04, 1, 0, 0, 0.64, PALETTE[1])
+        }
+        // Raised white eye globes + large dark pupils are intentionally drawn
+        // with strong contrast. Their size is kept in model units, so they
+        // remain legible even when the character grid is small.
+        for (const side of [-1, 1]) {
+          for (let ei = 0; ei <= 6; ei++) {
+            const theta = Math.PI * ei / 6
+            for (let ej = 0; ej < 10; ej++) {
+              const phi = 2 * Math.PI * ej / 10
+              const ex = 0.98 + 0.14 * Math.cos(theta)
+              const ey = 0.16 + 0.14 * Math.sin(theta) * Math.cos(phi)
+              const ez = side * (0.39 + 0.085 * Math.sin(theta) * Math.sin(phi))
+              plotFish(ex, ey, ez, Math.cos(theta), Math.sin(theta) * Math.cos(phi), side * Math.sin(theta) * Math.sin(phi), 1.35, '#F7FBFF')
+            }
+          }
+          for (let pi = -1; pi <= 1; pi++) {
+            for (let pj = -1; pj <= 1; pj++) {
+              plotFish(1.08 + pi * 0.035, 0.16 + pj * 0.04, side * 0.49, 0, 0, side, 1.2, '#121826')
+            }
+          }
+        }
       } else {
         // Sphere by screen-space raycast: walk CELLS and invert the projection,
         // instead of walking the surface and hoping the samples cover the cells.
@@ -1391,10 +1525,10 @@ export default function PetCanvas({ size, overlayActive, shape = 'donut', dark =
       if (velB.current !== 0 || velA.current !== 0 ||
           (shape === 'rainbow' && sweepRef.current.vel !== 0)) {
         rafRef.current = requestAnimationFrame(tick)
-      } else if (shape === 'jellyfish' || shape === 'rainbow') {
-        // Jellyfish and rainbow both have a subtle autonomous pulse (tentacle
-        // wave / breathing), but idle at 12fps instead of keeping Chromium's
-        // 60fps animation clock hot forever.
+      } else if (shape === 'jellyfish' || shape === 'rainbow' || shape === 'fish') {
+        // Jellyfish, rainbow and fish all retain a subtle autonomous idle
+        // motion, but run at 12fps instead of keeping Chromium's 60fps clock
+        // hot forever.
         idleTimerRef.current = window.setTimeout(wake, 83)
       }
     }
