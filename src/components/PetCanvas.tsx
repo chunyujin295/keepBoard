@@ -24,6 +24,8 @@ interface Props {
   glow?: boolean
   /** kick the spin in a random direction on each input, rather than always forward */
   randomSpin?: boolean
+  /** Manual responds visually to input; automatic gears move independently. */
+  driveMode?: Settings['driveMode']
   /** Extra input pulse / milestone celebration duration. */
   motionPreset?: Settings['motionPreset']
   /** Character grid density. */
@@ -361,6 +363,11 @@ interface DragState {
 
 type InputImpulse = 'key' | 'click' | 'wheel'
 
+type KickOptions = {
+  audio?: boolean
+  visual?: boolean
+}
+
 const MOTION_MS: Record<NonNullable<Settings['motionPreset']>, number> = {
   off: 0,
   short: 260,
@@ -368,7 +375,21 @@ const MOTION_MS: Record<NonNullable<Settings['motionPreset']>, number> = {
   long: 900
 }
 
-export default function PetCanvas({ size, overlayActive, shape = 'donut', dark = true, look = 'classic', customLook, charset = 'ascii', glow = false, randomSpin = false, motionPreset = 'medium', density = 'normal', jitter = true, audioTheme = 'none', volume = 0.5 }: Props) {
+/** Continuous target velocities for automatic gears. Values are degrees/frame,
+ * and `steering` controls how gently the actual velocity approaches the target. */
+const AUTO_MOTION: Record<Exclude<Settings['driveMode'], 'manual'>, {
+  velB: number
+  velA: number
+  sweepVelocity: number
+  steering: number
+  turnIntervalMs: number
+}> = {
+  'auto-slow': { velB: 0.35, velA: 0.12, sweepVelocity: 0.003, steering: 0.018, turnIntervalMs: 4_500 },
+  'auto-medium': { velB: 0.65, velA: 0.23, sweepVelocity: 0.0055, steering: 0.025, turnIntervalMs: 3_300 },
+  'auto-fast': { velB: 1.1, velA: 0.38, sweepVelocity: 0.009, steering: 0.035, turnIntervalMs: 2_200 }
+}
+
+export default function PetCanvas({ size, overlayActive, shape = 'donut', dark = true, look = 'classic', customLook, charset = 'ascii', glow = false, randomSpin = false, driveMode = 'manual', motionPreset = 'medium', density = 'normal', jitter = true, audioTheme = 'none', volume = 0.5 }: Props) {
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const rafRef = useRef(0)
   const idleTimerRef = useRef<number | null>(null)
@@ -382,6 +403,11 @@ export default function PetCanvas({ size, overlayActive, shape = 'donut', dark =
   const hitGridRef = useRef<{ mask: Uint8Array; cols: number; rows: number } | null>(null)
   const overlayRef = useRef(!!overlayActive)
   const randomSpinRef = useRef(!!randomSpin)
+  const driveModeRef = useRef<Settings['driveMode']>(driveMode)
+  /** Automatic movement changes direction sparingly; velocity interpolation in
+   * the render loop makes each turn arc smoothly instead of snapping. */
+  const autoDirectionRef = useRef(1)
+  const autoNextTurnRef = useRef(0)
   const motionPresetRef = useRef<Settings['motionPreset']>(motionPreset)
   const impulseTimerRef = useRef<number | null>(null)
   const celebrationTimerRef = useRef<number | null>(null)
@@ -406,7 +432,9 @@ export default function PetCanvas({ size, overlayActive, shape = 'donut', dark =
   /** bumped on window resize — the canvas backing store must be rebuilt */
   const [viewTick, setViewTick] = useState(0)
 
-  const triggerKick = (s: number, kind: InputImpulse = 'key') => {
+  const triggerKick = (s: number, kind: InputImpulse = 'key', options: KickOptions = {}) => {
+    const playAudio = options.audio !== false
+    const showVisual = options.visual !== false
     // The rainbow has no spin; input instead kicks a velocity impulse on its
     // light sweep — the direction follows the current heading (or +1 when at
     // rest), and the end-bounce flip is handled by the per-frame physics.
@@ -416,7 +444,7 @@ export default function PetCanvas({ size, overlayActive, shape = 'donut', dark =
       c.vel += dir * SWEEP_IMPULSE
       if (c.vel > SWEEP_MAXV) c.vel = SWEEP_MAXV
       else if (c.vel < -SWEEP_MAXV) c.vel = -SWEEP_MAXV
-      audioEngine.note(kind, impulseRef.current.combo)
+      if (playAudio) audioEngine.note(kind, impulseRef.current.combo)
       wakeAnimationRef.current()
       return
     }
@@ -433,7 +461,7 @@ export default function PetCanvas({ size, overlayActive, shape = 'donut', dark =
     velB.current = Math.max(-MAX_VEL_B, Math.min(MAX_VEL_B, velB.current + dir * 1.0 * s))
     velA.current = Math.max(-MAX_VEL_A, Math.min(MAX_VEL_A, velA.current + dir * 0.45 * s))
     const motionMs = MOTION_MS[motionPresetRef.current ?? 'medium'] ?? MOTION_MS.medium
-    if (motionMs > 0) {
+    if (showVisual && motionMs > 0) {
       if (kind === 'key') {
         impulseRef.current.key = Math.min(1, impulseRef.current.key + 0.9 * s)
         impulseRef.current.combo = Math.min(1, impulseRef.current.combo + 0.18 * s)
@@ -449,7 +477,7 @@ export default function PetCanvas({ size, overlayActive, shape = 'donut', dark =
         impulseTimerRef.current = null
       }, motionMs)
     }
-    audioEngine.note(kind, impulseRef.current.combo)
+    if (playAudio) audioEngine.note(kind, impulseRef.current.combo)
     wakeAnimationRef.current()
   }
 
@@ -469,6 +497,15 @@ export default function PetCanvas({ size, overlayActive, shape = 'donut', dark =
   useEffect(() => {
     randomSpinRef.current = !!randomSpin
   }, [randomSpin])
+
+  useEffect(() => {
+    driveModeRef.current = driveMode
+    autoDirectionRef.current = randomSpin ? (Math.random() < 0.5 ? -1 : 1) : 1
+    autoNextTurnRef.current = performance.now()
+    // A manual pet can have stopped its demand-driven render loop; wake it as
+    // soon as an automatic gear is selected.
+    if (driveMode !== 'manual') wakeAnimationRef.current()
+  }, [driveMode, randomSpin])
 
   useEffect(() => {
     shapeRef.current = shape
@@ -606,9 +643,18 @@ export default function PetCanvas({ size, overlayActive, shape = 'donut', dark =
   useEffect(() => {
     const off = window.keepboard?.onInputEvent?.((e: { type: string }) => {
       if (!e) return
-      if (e.type === 'keypress') triggerKick(1, 'key')
-      else if (e.type === 'wheel') triggerKick(0.35, 'wheel')
-      else if (typeof e.type === 'string' && e.type.startsWith('mousedown')) triggerKick(0.8, 'click')
+      const kind: InputImpulse | null = e.type === 'keypress'
+        ? 'key'
+        : e.type === 'wheel'
+          ? 'wheel'
+          : typeof e.type === 'string' && e.type.startsWith('mousedown')
+            ? 'click'
+            : null
+      if (!kind) return
+      // Sound always follows real input. Only manual gear turns that input into
+      // a visible motion impulse; automatic gears are driven by their own loop.
+      if (driveModeRef.current === 'manual') triggerKick(kind === 'wheel' ? 0.35 : kind === 'click' ? 0.8 : 1, kind)
+      else audioEngine.note(kind, impulseRef.current.combo)
     })
     return () => off?.()
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -616,6 +662,7 @@ export default function PetCanvas({ size, overlayActive, shape = 'donut', dark =
 
   useEffect(() => {
     const off = window.keepboard?.onDaily?.((d: DailyStats) => {
+      if (driveModeRef.current !== 'manual') return
       if ((MOTION_MS[motionPresetRef.current ?? 'medium'] ?? MOTION_MS.medium) <= 0) return
       if (!d) return
       const bucket = Math.floor(d.keyboardTotal / 1000)
@@ -773,15 +820,32 @@ export default function PetCanvas({ size, overlayActive, shape = 'donut', dark =
     const tick = () => {
       rafRef.current = 0
       const frameStart = performance.now()
-      // dual-axis spin: A tumbles, B main rotation; both kick + decay; static at rest
-      velB.current *= 0.94
-      velA.current *= 0.94
+      const autoMode = driveModeRef.current
+      const auto = autoMode === 'manual' ? null : AUTO_MOTION[autoMode]
+      if (auto) {
+        // Automatic movement is a continuous target speed, rather than a
+        // sequence of short impulses. This keeps slow gear visibly in motion
+        // at all times and lets turns curve into their new direction.
+        if (randomSpinRef.current && frameStart >= autoNextTurnRef.current) {
+          autoDirectionRef.current = Math.random() < 0.5 ? -1 : 1
+          autoNextTurnRef.current = frameStart + auto.turnIntervalMs
+        } else if (!randomSpinRef.current) {
+          autoDirectionRef.current = 1
+        }
+        const dir = autoDirectionRef.current
+        velB.current += (dir * auto.velB - velB.current) * auto.steering
+        velA.current += (dir * auto.velA - velA.current) * auto.steering
+      } else {
+        // Manual gear retains the original input kick + coast physics.
+        velB.current *= 0.94
+        velA.current *= 0.94
+        if (Math.abs(velB.current) < 0.02) velB.current = 0
+        if (Math.abs(velA.current) < 0.02) velA.current = 0
+      }
       impulseRef.current.key *= 0.86
       impulseRef.current.click *= 0.78
       impulseRef.current.wheel *= 0.9
       impulseRef.current.combo *= 0.965
-      if (Math.abs(velB.current) < 0.02) velB.current = 0
-      if (Math.abs(velA.current) < 0.02) velA.current = 0
       angA.current += (velA.current * Math.PI) / 180
       angB.current += (velB.current * Math.PI) / 180
 
@@ -793,7 +857,10 @@ export default function PetCanvas({ size, overlayActive, shape = 'donut', dark =
         if (c.pos >= 1) { c.pos = 1; c.vel = -Math.abs(c.vel) * SWEEP_BOUNCE }
         else if (c.pos <= 0) { c.pos = 0; c.vel = Math.abs(c.vel) * SWEEP_BOUNCE }
         c.vel *= SWEEP_DAMP
-        if (Math.abs(c.vel) < SWEEP_REST) c.vel = 0
+        if (auto) {
+          const target = autoDirectionRef.current * auto.sweepVelocity
+          c.vel += (target - c.vel) * auto.steering
+        } else if (Math.abs(c.vel) < SWEEP_REST) c.vel = 0
       }
 
       // A full end-over-end tumble makes the long DNA silhouette collapse to

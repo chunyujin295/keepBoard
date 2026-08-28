@@ -44,6 +44,7 @@ export default function App() {
         charset={settings?.charset ?? 'ascii'}
         glow={settings?.glow === true}
         randomSpin={settings?.randomSpin === true}
+        driveMode={settings?.driveMode ?? 'manual'}
         motionPreset={settings?.motionPreset ?? (settings?.motionEffects === false ? 'off' : 'medium')}
         density={settings?.density ?? 'normal'}
         jitter={settings?.jitter !== false}

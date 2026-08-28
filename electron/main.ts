@@ -319,6 +319,9 @@ const menuHandlers = {
   onToggleRandomSpin: (next: boolean) => {
     applySettingsPatch({ randomSpin: next })
   },
+  onDriveMode: (driveMode: Settings['driveMode']) => {
+    applySettingsPatch({ driveMode })
+  },
   onMotionPreset: (motionPreset: Settings['motionPreset']) => {
     applySettingsPatch({ motionPreset, motionEffects: motionPreset !== 'off' })
   },

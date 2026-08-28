@@ -26,6 +26,10 @@ function normalizeSettings(raw: Partial<Settings> | undefined): Settings {
   }
   settings.motionEffects = settings.motionPreset !== 'off'
   settings.jitter = settings.motionPreset !== 'off' && settings.jitter !== false
+  const rawDriveMode = (raw as Record<string, unknown> | undefined)?.driveMode
+  if (rawDriveMode !== 'manual' && rawDriveMode !== 'auto-slow' && rawDriveMode !== 'auto-medium' && rawDriveMode !== 'auto-fast') {
+    settings.driveMode = DEFAULT_SETTINGS.driveMode
+  }
   // audioTheme migration: an old `audioEnabled: true` boolean maps to the
   // default ghost theme; an invalid/absent theme id falls back to 'none'.
   const rawAudioTheme = (raw as Record<string, unknown> | undefined)?.audioTheme

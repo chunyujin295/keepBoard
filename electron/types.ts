@@ -23,6 +23,8 @@ export interface Settings {
   glow: boolean
   /** Kick the spin in a random direction per input, instead of always forward. */
   randomSpin: boolean
+  /** Manual keeps input-driven motion; automatic gears move the pet on a timer. */
+  driveMode: 'manual' | 'auto-slow' | 'auto-medium' | 'auto-fast'
   /** @deprecated Use motionPreset; kept to migrate old settings files. */
   motionEffects: boolean
   /** Extra input pulse / milestone celebration duration. Core spin still works when off. */
@@ -75,6 +77,7 @@ export const DEFAULT_SETTINGS: Settings = {
   charset: 'ascii',
   glow: false,
   randomSpin: false,
+  driveMode: 'manual',
   motionEffects: true,
   motionPreset: 'medium',
   density: 'normal',

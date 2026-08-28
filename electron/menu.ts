@@ -22,6 +22,7 @@ export interface MenuHandlers {
   onCharset: (c: 'ascii' | 'block' | 'dot' | 'line') => void
   onGlow: (next: boolean) => void
   onToggleRandomSpin: (next: boolean) => void
+  onDriveMode: (mode: Settings['driveMode']) => void
   onMotionPreset: (preset: Settings['motionPreset']) => void
   onDensity: (density: Settings['density']) => void
   onToggleJitter: (next: boolean) => void
@@ -51,6 +52,13 @@ const MOTION_LEVELS: { id: Settings['motionPreset']; label: string }[] = [
   { id: 'short', label: '短：轻快' },
   { id: 'medium', label: '中：丝滑' },
   { id: 'long', label: '长：舒展' }
+]
+
+const DRIVE_MODES: { id: Settings['driveMode']; label: string }[] = [
+  { id: 'manual', label: '手动挡' },
+  { id: 'auto-slow', label: '自动挡慢' },
+  { id: 'auto-medium', label: '自动挡中' },
+  { id: 'auto-fast', label: '自动挡快' }
 ]
 
 // Built-in colour-look presets — the full definitions live in PetCanvas (LOOKS).
@@ -90,6 +98,7 @@ export function buildTrayMenu(settings: Settings, h: MenuHandlers, customLooks: 
   const curSize = settings.windowSize || 220
   const curShape = settings.shape || 'donut'
   const curMotion = settings.motionPreset ?? (settings.motionEffects === false ? 'off' : 'medium')
+  const curDriveMode = settings.driveMode ?? 'manual'
   const lookItems: Electron.MenuItemConstructorOptions[] = LOOK_PRESETS.map((p) => ({
     label: p.label,
     type: 'radio' as const,
@@ -181,6 +190,15 @@ export function buildTrayMenu(settings: Settings, h: MenuHandlers, customLooks: 
       type: 'checkbox',
       checked: settings.randomSpin === true,
       click: (m) => h.onToggleRandomSpin(m.checked)
+    },
+    {
+      label: '⚙️ 档位',
+      submenu: DRIVE_MODES.map((mode) => ({
+        label: mode.label,
+        type: 'radio' as const,
+        checked: curDriveMode === mode.id,
+        click: () => h.onDriveMode(mode.id)
+      }))
     },
     {
       label: '🌊 动效',

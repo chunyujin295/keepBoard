@@ -15,6 +15,7 @@ export interface Settings {
   charset: 'ascii' | 'block' | 'dot' | 'line'
   glow: boolean
   randomSpin: boolean
+  driveMode: 'manual' | 'auto-slow' | 'auto-medium' | 'auto-fast'
   /** @deprecated Use motionPreset; kept to migrate old settings files. */
   motionEffects: boolean
   motionPreset: 'off' | 'short' | 'medium' | 'long'
