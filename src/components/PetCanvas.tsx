@@ -282,12 +282,8 @@ const FIT = {
   fish: { k: 1.16, ox: 0.5, oy: 0.5 }
 } as const
 
-/** Max spacing between adjacent surface samples, in cells. The old hardcoded
- *  angular steps under-sampled as soon as COLS grew — at 640px a quarter of the
- *  torus's cells came out empty. 1.4 measures >=98.7% cell coverage at every
- *  window size; halving it costs 2x the samples for +0.3%. */
-const SAMPLE_GAP = 1.4
-/** Hard ceiling on torus samples per frame. Honouring SAMPLE_GAP outright costs
+/** Hard ceiling on torus samples per frame. Honouring the tightest sampling
+ *  pitch outright costs
  *  192k samples at a 640px window (~400M flops/s at 60fps — too hot for JS).
  *  Backing off to 90k measured 99.6% coverage instead of 99.8%: half the work
  *  for two tenths of a percent. */
@@ -325,25 +321,28 @@ const SWEEP_REST = 0.0008
 const RAINBOW_SY = 1.35
 
 type SurfacePoint = { x: number; y: number; z: number; nx: number; ny: number; nz: number }
-let heartSurfaceCache: SurfacePoint[] | null = null
+const heartSurfaceCache = new Map<number, SurfacePoint[]>()
 
 /** Lazily voxelise the implicit heart surface once, then rotate/project only
  *  the resulting shell points on subsequent frames. The polynomial is the
  *  classic 3D heart with its pointed axis remapped to screen-up Y. */
-function heartSurface(): SurfacePoint[] {
-  if (heartSurfaceCache) return heartSurfaceCache
+function heartSurface(detail: number): SurfacePoint[] {
+  const cached = heartSurfaceCache.get(detail)
+  if (cached) return cached
   const out: SurfacePoint[] = []
-  const n = 70
+  const n = detail
+  const zSteps = Math.round(n * 0.74)
+  const tolerance = 0.022 * 70 / n
   for (let ix = 0; ix <= n; ix++) {
     const x = -1.35 + 2.7 * ix / n
     for (let iy = 0; iy <= n; iy++) {
       const y = -1.2 + 2.55 * iy / n
-      for (let iz = 0; iz <= 52; iz++) {
-        const z = -0.78 + 1.56 * iz / 52
+      for (let iz = 0; iz <= zSteps; iz++) {
+        const z = -0.78 + 1.56 * iz / zSteps
         const a = x * x + 2.25 * z * z + y * y - 1
         const y3 = y * y * y
         const f = a * a * a - x * x * y3 - 0.1125 * z * z * y3
-        if (Math.abs(f) > 0.022) continue
+        if (Math.abs(f) > tolerance) continue
         let nx = 6 * x * a * a - 2 * x * y3
         let ny = 6 * y * a * a - 3 * x * x * y * y - 0.3375 * z * z * y * y
         let nz = 13.5 * z * a * a - 0.225 * z * y3
@@ -354,7 +353,7 @@ function heartSurface(): SurfacePoint[] {
       }
     }
   }
-  heartSurfaceCache = out
+  heartSurfaceCache.set(detail, out)
   return out
 }
 
@@ -433,6 +432,9 @@ export default function PetCanvas({ size, overlayActive, shape = 'donut', dark =
    *  signed coasting velocity (sign = travel direction) that bounces off each
    *  end with energy loss, so the light glides and settles. */
   const sweepRef = useRef({ pos: 0, vel: 0 })
+  /** Fish route time advances only while the pet is actually in motion. Start
+   * halfway through its first route so manual gear opens with a visible fish. */
+  const fishClockRef = useRef({ elapsed: 9_090, lastFrame: performance.now() })
   const [dragging, setDragging] = useState(false)
   const [impulse, setImpulse] = useState<InputImpulse | null>(null)
   const [celebration, setCelebration] = useState('')
@@ -808,11 +810,18 @@ export default function PetCanvas({ size, overlayActive, shape = 'donut', dark =
     // the NEAREST point of the torus — that's where samples spread out most.
     // Use the denser axis (x) so neither axis under-samples.
     const cellsPerUnit = K1x / (K2 - (R1 + R2))
-    let dTh = SAMPLE_GAP / cellsPerUnit
-    let dPh = SAMPLE_GAP / (cellsPerUnit * (R1 + R2))
+    // Denser character grids need denser surface samples as well. Otherwise
+    // the glyphs overlap but the torus still has unvisited grid cells between
+    // samples, which reads as a hollow perforated surface.
+    const sampleGap = density === 'dense' ? 0.58 : density === 'sparse' ? 1.45 : 1.0
+    const sampleBudget = density === 'dense'
+      ? Math.min(220_000, Math.max(120_000, Math.ceil(COLS * ROWS * 0.75)))
+      : Math.min(140_000, Math.max(MAX_SAMPLES, Math.ceil(COLS * ROWS * 0.5)))
+    let dTh = sampleGap / cellsPerUnit
+    let dPh = sampleGap / (cellsPerUnit * (R1 + R2))
     // Back both steps off together if the budget is blown, so the sampling stays
     // proportioned the same way (th is R1 across, ph is R1+R2 across).
-    const over = (6.283 / dTh) * (6.283 / dPh) / MAX_SAMPLES
+    const over = (6.283 / dTh) * (6.283 / dPh) / sampleBudget
     if (over > 1) { const f = Math.sqrt(over); dTh *= f; dPh *= f }
     const NTH = Math.ceil(6.283 / dTh)
     const NPH = Math.ceil(6.283 / dPh)
@@ -1094,7 +1103,10 @@ export default function PetCanvas({ size, overlayActive, shape = 'donut', dark =
           }
         }
       } else if (shape === 'heart') {
-        const points = heartSurface()
+        // Larger windows get a denser cached voxel shell; a fixed 70³ grid
+        // leaves the heart's curved lobes perforated once character cells grow.
+        const heartDetail = Math.min(112, Math.max(70, Math.round(sz / 5 * (density === 'dense' ? 1.1 : 1))))
+        const points = heartSurface(heartDetail)
         for (let i = 0; i < points.length; i++) {
           const p = points[i]
           const x1 = p.x * cosB + p.z * sinB
@@ -1300,33 +1312,53 @@ export default function PetCanvas({ size, overlayActive, shape = 'donut', dark =
         // A single volumetric fish. Surface samples preserve real perspective,
         // lighting and self-occlusion; the tail and fins animate around the
         // body so it feels like it is swimming rather than merely rotating.
-        const now = performance.now()
-        // Swim in one direction only: once the fish has fully exited right,
-        // it is reset off-screen on the left before the next pass. This avoids
-        // the visually unnatural backward-swimming return leg.
-        const travel = (now * 0.000055) % 1
+        const fishClock = fishClockRef.current
+        const fishIsMoving = auto !== null || velB.current !== 0 || velA.current !== 0
+        const elapsedSinceLastFrame = Math.min(100, Math.max(0, frameStart - fishClock.lastFrame))
+        fishClock.lastFrame = frameStart
+        if (fishIsMoving) fishClock.elapsed += elapsedSinceLastFrame
+        const now = fishClock.elapsed
+        // Each pass starts and ends well outside the viewport. Routes cover
+        // horizontal, vertical and diagonal entries; the fish's body rotates
+        // to match the route tangent, so it visibly propels itself forward.
+        const routes = [
+          [-4.1, -1.1, 4.1, 0.9], [-0.9, 4.1, 1.0, -4.1],
+          [4.1, 0.9, -4.1, -1.0], [1.0, -4.1, -0.9, 4.1],
+          [-4.1, 3.5, 4.1, -3.5], [4.1, 3.5, -4.1, -3.5]
+        ] as const
+        const routePosition = now * 0.000055
+        const route = routes[Math.floor(routePosition) % routes.length]
+        const travel = routePosition % 1
+        const [startX, startY, endX, endY] = route
+        const dx = endX - startX, dy = endY - startY
+        const course = Math.atan2(dy, dx)
+        const cosC = Math.cos(course), sinC = Math.sin(course)
         const yaw = Math.sin(now * 0.00038) * 0.18 + angB.current * 0.16
         const pitch = Math.sin(now * 0.00061) * 0.12 + angA.current * 0.08
         const cosY = Math.cos(yaw), sinY = Math.sin(yaw)
         const cosP = Math.cos(pitch), sinP = Math.sin(pitch)
-        const swimX = (travel * 2 - 1) * 3.8
-        const swimY = Math.sin(now * 0.00047) * 0.11
+        const swimX = startX + dx * travel
+        const swimY = startY + dy * travel
         const plotFish = (x0: number, y0: number, z0: number, nx0: number, ny0: number, nz0: number, shade: number, col: string) => {
-          const x1 = x0 * cosY + z0 * sinY + swimX
+          const x1 = x0 * cosY + z0 * sinY
           const z1 = -x0 * sinY + z0 * cosY
-          const y = y0 * cosP - z1 * sinP + swimY
+          const y1 = y0 * cosP - z1 * sinP
           const z = y0 * sinP + z1 * cosP
+          const x = x1 * cosC - y1 * sinC + swimX
+          const y = x1 * sinC + y1 * cosC + swimY
           const ooz = 1 / (K2 + z)
-          const xp = Math.round(cx + K1x * ooz * x1)
+          const xp = Math.round(cx + K1x * ooz * x)
           const yp = Math.round(cy - K1y * ooz * y)
           if (xp < 0 || yp < 0 || xp >= COLS || yp >= ROWS) return
           const idx = yp * COLS + xp
           if (ooz <= zbuf[idx]) return
           zbuf[idx] = ooz
-          const nnx = nx0 * cosY + nz0 * sinY
+          const nnx1 = nx0 * cosY + nz0 * sinY
           const nnz1 = -nx0 * sinY + nz0 * cosY
-          const nny = ny0 * cosP - nnz1 * sinP
+          const nny1 = ny0 * cosP - nnz1 * sinP
           const nnz = ny0 * sinP + nnz1 * cosP
+          const nnx = nnx1 * cosC - nny1 * sinC
+          const nny = nnx1 * sinC + nny1 * cosC
           const light = Math.max(0.12, -0.38 * nnx + 0.58 * nny - 0.72 * nnz)
           addChar(xp, yp, glyph(Math.min(1, shade * light)), col)
         }
@@ -1525,11 +1557,6 @@ export default function PetCanvas({ size, overlayActive, shape = 'donut', dark =
       if (velB.current !== 0 || velA.current !== 0 ||
           (shape === 'rainbow' && sweepRef.current.vel !== 0)) {
         rafRef.current = requestAnimationFrame(tick)
-      } else if (shape === 'jellyfish' || shape === 'rainbow' || shape === 'fish') {
-        // Jellyfish, rainbow and fish all retain a subtle autonomous idle
-        // motion, but run at 12fps instead of keeping Chromium's 60fps clock
-        // hot forever.
-        idleTimerRef.current = window.setTimeout(wake, 83)
       }
     }
     const wake = () => {
